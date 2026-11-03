@@ -88,6 +88,17 @@ export default function ProductDetailClient({
           >
             {product.category}
           </Link>
+          {product.subcategory && (
+            <>
+              <ChevronRight className="w-3.5 h-3.5" />
+              <Link
+                href={`/shop?category=${encodeURIComponent(product.category)}&subcategory=${encodeURIComponent(product.subcategory)}`}
+                className="hover:text-black"
+              >
+                {product.subcategory}
+              </Link>
+            </>
+          )}
           <ChevronRight className="w-3.5 h-3.5" />
           <span className="text-black font-semibold truncate max-w-xs">{product.name}</span>
         </nav>
@@ -154,9 +165,15 @@ export default function ProductDetailClient({
             <div>
               {/* Category & Rating */}
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold uppercase tracking-widest text-neutral-500">
-                  {product.category}
-                </span>
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-neutral-500">
+                  <span>{product.category}</span>
+                  {product.subcategory && (
+                    <>
+                      <span className="text-neutral-300">•</span>
+                      <span className="text-black">{product.subcategory}</span>
+                    </>
+                  )}
+                </div>
                 <div className="flex items-center gap-1.5 text-xs text-neutral-700 font-semibold bg-neutral-100 px-2.5 py-1 rounded-full">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                   <span>{product.rating || 4.9}</span>

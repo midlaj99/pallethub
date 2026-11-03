@@ -76,6 +76,9 @@ export default function AdminDashboardClient() {
   const [editingProductSlug, setEditingProductSlug] = useState<string | null>(null);
   const [prodName, setProdName] = useState('');
   const [prodCategory, setProdCategory] = useState('Costume');
+  const [prodSubcategory, setProdSubcategory] = useState('');
+  const [isCustomSubcategory, setIsCustomSubcategory] = useState(false);
+  const [customSubcategoryInput, setCustomSubcategoryInput] = useState('');
   const [prodPrice, setProdPrice] = useState('899');
   const [prodOrigPrice, setProdOrigPrice] = useState('1499');
   const [prodStock, setProdStock] = useState('25');
@@ -95,9 +98,11 @@ export default function AdminDashboardClient() {
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatDesc, setNewCatDesc] = useState('');
+  const [newCatSubcategories, setNewCatSubcategories] = useState('');
   const [newCatImage, setNewCatImage] = useState('/images/categories/costume.png');
   const [catImageMode, setCatImageMode] = useState<'upload' | 'url'>('url');
   const [savingCategory, setSavingCategory] = useState(false);
+  const [quickSubcatInputs, setQuickSubcatInputs] = useState<Record<string, string>>({});
 
   // Supplier modal state
   const [supModalOpen, setSupModalOpen] = useState(false);
@@ -224,7 +229,12 @@ export default function AdminDashboardClient() {
   const handleOpenAddProduct = () => {
     setEditingProductSlug(null);
     setProdName('');
-    setProdCategory(categories[0]?.name || 'Costume');
+    const defaultCat = categories[0]?.name || 'Costume';
+    setProdCategory(defaultCat);
+    const catObj = categories.find((c) => c.name.toLowerCase() === defaultCat.toLowerCase());
+    setProdSubcategory(catObj?.subcategories?.[0] || '');
+    setIsCustomSubcategory(false);
+    setCustomSubcategoryInput('');
     setProdPrice('899');
     setProdOrigPrice('1499');
     setProdStock('20');
@@ -242,6 +252,18 @@ export default function AdminDashboardClient() {
     setEditingProductSlug(p.slug);
     setProdName(p.name);
     setProdCategory(p.category);
+    setProdSubcategory(p.subcategory || '');
+    const catObj = categories.find((c) => c.name.toLowerCase() === p.category.toLowerCase());
+    const hasInSubcats = catObj?.subcategories?.some(
+      (s) => s.toLowerCase() === (p.subcategory || '').toLowerCase()
+    );
+    if (p.subcategory && !hasInSubcats) {
+      setIsCustomSubcategory(true);
+      setCustomSubcategoryInput(p.subcategory);
+    } else {
+      setIsCustomSubcategory(false);
+      setCustomSubcategoryInput('');
+    }
     setProdPrice(String(p.price));
     setProdOrigPrice(p.originalPrice ? String(p.originalPrice) : '');
     setProdStock(String(p.stock));
@@ -268,9 +290,14 @@ export default function AdminDashboardClient() {
     const imagesToSave =
       productImages.length > 0 ? productImages : ['/images/products/oversized-tshirt.png'];
 
+    const chosenSubcategory = isCustomSubcategory
+      ? customSubcategoryInput.trim()
+      : prodSubcategory.trim();
+
     const payload = {
       name: prodName,
       category: prodCategory,
+      subcategory: chosenSubcategory,
       price: Number(prodPrice),
       originalPrice: prodOrigPrice ? Number(prodOrigPrice) : undefined,
       description: prodDesc,
@@ -280,6 +307,20 @@ export default function AdminDashboardClient() {
       supplierId: prodSupplierId,
       isFeatured: prodIsFeatured,
     };
+
+    // If custom subcategory added, persist to category's subcategories list as well
+    if (chosenSubcategory) {
+      const parentCat = categories.find(
+        (c) => c.name.toLowerCase() === prodCategory.toLowerCase()
+      );
+      if (parentCat && !parentCat.subcategories?.includes(chosenSubcategory)) {
+        fetch('/api/categories', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: parentCat.slug, newSubcategory: chosenSubcategory }),
+        }).catch(() => {});
+      }
+    }
 
     try {
       if (editingProductSlug) {
@@ -410,6 +451,11 @@ export default function AdminDashboardClient() {
     if (!newCatName.trim()) return;
     setSavingCategory(true);
 
+    const subcats = newCatSubcategories
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
     try {
       const res = await fetch('/api/categories', {
         method: 'POST',
@@ -418,6 +464,7 @@ export default function AdminDashboardClient() {
           name: newCatName,
           description: newCatDesc,
           image: newCatImage || '/images/categories/costume.png',
+          subcategories: subcats,
         }),
       });
       const data = await res.json();
@@ -426,12 +473,64 @@ export default function AdminDashboardClient() {
         setCatModalOpen(false);
         setNewCatName('');
         setNewCatDesc('');
+        setNewCatSubcategories('');
         fetchAdminData();
       }
     } catch (err) {
       console.error(err);
     } finally {
       setSavingCategory(false);
+    }
+  };
+
+  // Add Subcategory directly to an existing category
+  const handleQuickAddSubcategory = async (categorySlug: string, categoryName: string) => {
+    const subName = (quickSubcatInputs[categorySlug] || '').trim();
+    if (!subName) return;
+
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: categorySlug,
+          categoryName,
+          newSubcategory: subName,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Subcategory "${subName}" added to ${categoryName}!`);
+        setQuickSubcatInputs((prev) => ({ ...prev, [categorySlug]: '' }));
+        fetchAdminData();
+      } else {
+        showToast(data.error || 'Failed to add subcategory');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error adding subcategory');
+    }
+  };
+
+  // Remove Subcategory from an existing category
+  const handleRemoveSubcategory = async (categorySlug: string, subName: string) => {
+    if (!confirm(`Remove subcategory "${subName}"?`)) return;
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: categorySlug,
+          removeSubcategory: subName,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Subcategory "${subName}" removed.`);
+        fetchAdminData();
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -907,9 +1006,16 @@ export default function AdminDashboardClient() {
                           </td>
 
                           <td className="py-3.5">
-                            <span className="bg-neutral-100 text-neutral-700 font-semibold px-2 py-0.5 rounded-md text-[11px]">
-                              {p.category}
-                            </span>
+                            <div className="flex flex-col items-start gap-1">
+                              <span className="bg-neutral-100 text-neutral-800 font-semibold px-2 py-0.5 rounded-md text-[11px]">
+                                {p.category}
+                              </span>
+                              {p.subcategory && (
+                                <span className="bg-neutral-200/75 text-neutral-600 font-medium px-2 py-0.5 rounded-md text-[10px]">
+                                  {p.subcategory}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td className="py-3.5">
@@ -1168,6 +1274,65 @@ export default function AdminDashboardClient() {
                       <p className="text-xs text-neutral-500 mt-1 line-clamp-2">
                         {cat.description || 'Curated fashion and dropshipping catalog items.'}
                       </p>
+
+                      {/* Subcategories Management */}
+                      <div className="mt-4 pt-3 border-t border-neutral-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
+                            Subcategories ({cat.subcategories?.length || 0})
+                          </span>
+                        </div>
+
+                        {/* Subcategory Pills */}
+                        <div className="flex flex-wrap gap-1.5 mb-2.5 min-h-[26px]">
+                          {cat.subcategories && cat.subcategories.length > 0 ? (
+                            cat.subcategories.map((sub) => (
+                              <span
+                                key={sub}
+                                className="inline-flex items-center gap-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-semibold px-2 py-0.5 rounded-md transition-colors"
+                              >
+                                <span>{sub}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveSubcategory(cat.slug, sub)}
+                                  className="text-neutral-400 hover:text-red-600 transition-colors cursor-pointer ml-0.5"
+                                  title={`Remove ${sub}`}
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </span>
+                            ))
+                          ) : (
+                            <p className="text-[11px] text-neutral-400 italic">No subcategories added yet</p>
+                          )}
+                        </div>
+
+                        {/* Inline Quick Add Form */}
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="+ Add subcategory..."
+                            value={quickSubcatInputs[cat.slug] || ''}
+                            onChange={(e) =>
+                              setQuickSubcatInputs((prev) => ({ ...prev, [cat.slug]: e.target.value }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleQuickAddSubcategory(cat.slug, cat.name);
+                              }
+                            }}
+                            className="flex-1 bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1 text-[11px] focus:outline-none focus:border-black"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAddSubcategory(cat.slug, cat.name)}
+                            className="bg-neutral-900 hover:bg-black text-white text-[11px] font-bold px-3 py-1 rounded-lg transition-colors cursor-pointer"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="pt-4 mt-4 border-t border-neutral-100 flex items-center justify-between">
@@ -1725,13 +1890,20 @@ export default function AdminDashboardClient() {
                   />
                 </div>
 
-                {/* Category & Supplier */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Category, Subcategory & Supplier */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block font-bold uppercase mb-1">Category *</label>
                     <select
                       value={prodCategory}
-                      onChange={(e) => setProdCategory(e.target.value)}
+                      onChange={(e) => {
+                        const newCat = e.target.value;
+                        setProdCategory(newCat);
+                        const catObj = categories.find((c) => c.name.toLowerCase() === newCat.toLowerCase());
+                        setProdSubcategory(catObj?.subcategories?.[0] || '');
+                        setIsCustomSubcategory(false);
+                        setCustomSubcategoryInput('');
+                      }}
                       className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-black cursor-pointer"
                     >
                       {categories.map((c) => (
@@ -1740,6 +1912,54 @@ export default function AdminDashboardClient() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-bold uppercase">Subcategory</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomSubcategory(!isCustomSubcategory);
+                          if (!isCustomSubcategory) setCustomSubcategoryInput(prodSubcategory);
+                        }}
+                        className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                      >
+                        {isCustomSubcategory ? 'Choose Existing' : '+ New Custom'}
+                      </button>
+                    </div>
+
+                    {isCustomSubcategory ? (
+                      <input
+                        type="text"
+                        value={customSubcategoryInput}
+                        onChange={(e) => setCustomSubcategoryInput(e.target.value)}
+                        placeholder="e.g. Oversized Tees"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-black"
+                      />
+                    ) : (
+                      <select
+                        value={prodSubcategory}
+                        onChange={(e) => {
+                          if (e.target.value === '__custom__') {
+                            setIsCustomSubcategory(true);
+                            setCustomSubcategoryInput('');
+                          } else {
+                            setProdSubcategory(e.target.value);
+                          }
+                        }}
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-black cursor-pointer"
+                      >
+                        <option value="">None (Top-Level Category)</option>
+                        {categories
+                          .find((c) => c.name.toLowerCase() === prodCategory.toLowerCase())
+                          ?.subcategories?.map((sub) => (
+                            <option key={sub} value={sub}>
+                              {sub}
+                            </option>
+                          ))}
+                        <option value="__custom__">+ Type Custom Subcategory...</option>
+                      </select>
+                    )}
                   </div>
                   <div>
                     <label className="block font-bold uppercase mb-1">Fulfillment Supplier *</label>
@@ -2099,6 +2319,19 @@ export default function AdminDashboardClient() {
                     placeholder="Category summary"
                     className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2"
                   />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Subcategories (comma separated)</label>
+                  <input
+                    type="text"
+                    value={newCatSubcategories}
+                    onChange={(e) => setNewCatSubcategories(e.target.value)}
+                    placeholder="e.g. Oversized Tees, Blazers, Formal Wear"
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">
+                    Enter subcategories separated by commas. You can also add more at any time.
+                  </p>
                 </div>
                 <div>
                   <label className="block font-bold uppercase mb-1">Category Image (Upload or URL)</label>

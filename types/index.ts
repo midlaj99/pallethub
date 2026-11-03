@@ -6,6 +6,7 @@ export interface ICategory {
   image: string;
   itemCount?: number;
   isActive?: boolean;
+  subcategories?: string[];
 }
 
 export interface IProduct {
@@ -14,6 +15,7 @@ export interface IProduct {
   slug: string;
   description: string;
   category: string;
+  subcategory?: string;
   price: number;
   originalPrice?: number;
   discountPercent?: number;

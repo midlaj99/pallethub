@@ -9,6 +9,7 @@ export const INITIAL_CATEGORIES: ICategory[] = [
     image: '/images/categories/costume.png',
     itemCount: 8,
     isActive: true,
+    subcategories: ['Oversized Tees', 'Blazers', 'Formal Wear', 'Suits'],
   },
   {
     _id: 'cat_2',
@@ -18,6 +19,7 @@ export const INITIAL_CATEGORIES: ICategory[] = [
     image: '/images/categories/accessories.png',
     itemCount: 14,
     isActive: true,
+    subcategories: ['Bracelets', 'Sunglasses', 'Wallets', 'Belts'],
   },
   {
     _id: 'cat_3',
@@ -27,6 +29,7 @@ export const INITIAL_CATEGORIES: ICategory[] = [
     image: '/images/categories/caps.png',
     itemCount: 9,
     isActive: true,
+    subcategories: ['Dad Caps', 'Snapbacks', 'Beanies', 'Bucket Hats'],
   },
   {
     _id: 'cat_4',
@@ -36,6 +39,7 @@ export const INITIAL_CATEGORIES: ICategory[] = [
     image: '/images/categories/hoodies.png',
     itemCount: 12,
     isActive: true,
+    subcategories: ['Heavyweight Hoodies', 'Zip-Up Hoodies', 'Sweatshirts'],
   },
   {
     _id: 'cat_5',
@@ -45,6 +49,7 @@ export const INITIAL_CATEGORIES: ICategory[] = [
     image: '/images/categories/watches.png',
     itemCount: 6,
     isActive: true,
+    subcategories: ['Chronographs', 'Automatic Watches', 'Leather Straps'],
   },
   {
     _id: 'cat_6',
@@ -54,6 +59,7 @@ export const INITIAL_CATEGORIES: ICategory[] = [
     image: '/images/categories/chains.png',
     itemCount: 11,
     isActive: true,
+    subcategories: ['Cuban Links', 'Layered Chains', 'Pendants'],
   },
 ];
 
@@ -100,6 +106,7 @@ export const INITIAL_PRODUCTS: IProduct[] = [
     slug: 'oversized-t-shirt',
     description: 'Engineered with 260 GSM combed French terry cotton. Features a structured drop-shoulder fit, ribbed high-crew neckline, and deep charcoal black finish. Tailored for elevated casual aesthetics.',
     category: 'Costume',
+    subcategory: 'Oversized Tees',
     price: 799,
     originalPrice: 1299,
     discountPercent: 38,
@@ -125,6 +132,7 @@ export const INITIAL_PRODUCTS: IProduct[] = [
     slug: 'formal-blazer',
     description: 'Precision cut slim-fit tailored evening blazer in deep jet black. Italian-inspired notched lapel, lightweight wool-blend crease-resistant fabric, and functional inner passport pockets.',
     category: 'Costume',
+    subcategory: 'Blazers',
     price: 2499,
     originalPrice: 4499,
     discountPercent: 44,
@@ -150,6 +158,7 @@ export const INITIAL_PRODUCTS: IProduct[] = [
     slug: 'trendy-cap',
     description: 'Structured 6-panel baseball cap with high-density monochrome 3D embroidery. Finished with brass buckle strap closure, breathable eyelets, and moisture-wicking internal sweatband.',
     category: 'Caps & Hats',
+    subcategory: 'Dad Caps',
     price: 599,
     originalPrice: 999,
     discountPercent: 40,
@@ -175,6 +184,7 @@ export const INITIAL_PRODUCTS: IProduct[] = [
     slug: 'mens-watch',
     description: 'All-black stealth chronograph featuring 316L surgical-grade matte black PVD stainless steel, scratch-resistant sapphire-coated glass, 5 ATM water resistance, and high-precision Japanese quartz movement.',
     category: 'Luxury Watches',
+    subcategory: 'Chronographs',
     price: 1999,
     originalPrice: 3999,
     discountPercent: 50,
@@ -200,6 +210,7 @@ export const INITIAL_PRODUCTS: IProduct[] = [
     slug: 'chain-necklace',
     description: 'Diamond-cut 8mm Miami Cuban link chain crafted in premium 316L stainless steel with multi-layer rhodium plating. Tarnish-free, hypoallergenic, and secured by an engraved fold-over safety clasp.',
     category: 'Chains & Necklaces',
+    subcategory: 'Cuban Links',
     price: 899,
     originalPrice: 1499,
     discountPercent: 40,
@@ -225,6 +236,7 @@ export const INITIAL_PRODUCTS: IProduct[] = [
     slug: 'oversized-minimalist-hoodie',
     description: 'Ultra-plush 400 GSM heavyweight brushed fleece hoodie. Styled in an earthy warm sand beige with double-lined kangaroo pocket, seamless drop shoulders, and snug ribbed cuffs.',
     category: 'Hoodies & Shows',
+    subcategory: 'Heavyweight Hoodies',
     price: 1499,
     originalPrice: 2499,
     discountPercent: 40,
@@ -250,6 +262,7 @@ export const INITIAL_PRODUCTS: IProduct[] = [
     slug: 'matte-beaded-bracelet-set',
     description: 'Dual-piece stackable bracelet pairing matte black volcanic lava stones with faceted onyx beads and a central antique silver alloy charm. Built with durable high-tensile elastic chord.',
     category: 'Accessories',
+    subcategory: 'Bracelets',
     price: 499,
     originalPrice: 899,
     discountPercent: 44,

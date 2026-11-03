@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const category = searchParams.get('category');
+    const subcategory = searchParams.get('subcategory');
     const search = searchParams.get('search');
     const minPrice = searchParams.get('minPrice') ? Number(searchParams.get('minPrice')) : null;
     const maxPrice = searchParams.get('maxPrice') ? Number(searchParams.get('maxPrice')) : null;
@@ -23,6 +24,10 @@ export async function GET(req: NextRequest) {
 
       if (category && category !== 'all') {
         query.category = { $regex: new RegExp(`^${category}$`, 'i') };
+      }
+
+      if (subcategory && subcategory !== 'all') {
+        query.subcategory = { $regex: new RegExp(`^${subcategory}$`, 'i') };
       }
 
       if (search) {
@@ -66,6 +71,16 @@ export async function GET(req: NextRequest) {
         (p) =>
           p.category.toLowerCase() === catLower ||
           p.category.toLowerCase().includes(catLower)
+      );
+    }
+
+    if (subcategory && subcategory !== 'all') {
+      const subLower = subcategory.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.subcategory &&
+          (p.subcategory.toLowerCase() === subLower ||
+           p.subcategory.toLowerCase().includes(subLower))
       );
     }
 
@@ -132,6 +147,7 @@ export async function POST(req: NextRequest) {
       slug,
       description: body.description || '',
       category: body.category,
+      subcategory: body.subcategory || '',
       price: Number(body.price),
       originalPrice: body.originalPrice ? Number(body.originalPrice) : undefined,
       discountPercent: body.originalPrice && body.originalPrice > body.price

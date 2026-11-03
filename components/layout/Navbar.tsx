@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,6 +16,8 @@ import {
 import Logo from '@/components/ui/Logo';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
+import { ICategory } from '@/types';
+import { INITIAL_CATEGORIES } from '@/lib/data/initialData';
 
 export default function Navbar() {
   const router = useRouter();
@@ -24,7 +26,20 @@ export default function Navbar() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileCategoryOpen, setMobileCategoryOpen] = useState<string | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [categories, setCategories] = useState<ICategory[]>(INITIAL_CATEGORIES);
+
+  useEffect(() => {
+    fetch('/api/categories')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.categories && data.categories.length > 0) {
+          setCategories(data.categories);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,50 +49,21 @@ export default function Navbar() {
     }
   };
 
-  const navCategories = [
-    {
-      name: 'Clothing',
-      href: '/shop?category=Costume',
-      items: [
-        { name: 'Oversized T-Shirts', href: '/products/oversized-t-shirt' },
-        { name: 'Tailored Formal Blazers', href: '/products/formal-blazer' },
-        { name: 'Minimalist Hoodies', href: '/products/oversized-minimalist-hoodie' },
-      ],
-    },
-    {
-      name: 'Accessories',
-      href: '/shop?category=Accessories',
-      items: [
-        { name: 'Matte Beaded Bracelets', href: '/products/matte-beaded-bracelet-set' },
-        { name: 'Sunglasses & Shades', href: '/shop?category=Accessories' },
-        { name: 'All Lifestyle Accessories', href: '/shop?category=Accessories' },
-      ],
-    },
-    {
-      name: 'Watches',
-      href: '/shop?category=Luxury%20Watches',
-      items: [
-        { name: "Men's Stealth Watch", href: '/products/mens-watch' },
-        { name: 'Matte Chronographs', href: '/shop?category=Luxury%20Watches' },
-      ],
-    },
-    {
-      name: 'Chains',
-      href: '/shop?category=Chains%20%26%20Necklaces',
-      items: [
-        { name: 'Miami Cuban Link Chains', href: '/products/chain-necklace' },
-        { name: 'Layered Necklaces', href: '/shop?category=Chains%20%26%20Necklaces' },
-      ],
-    },
-    {
-      name: 'Caps',
-      href: '/shop?category=Caps%20%26%20Hats',
-      items: [
-        { name: 'Embroidered Dad Caps', href: '/products/trendy-cap' },
-        { name: 'Streetwear Snapbacks', href: '/shop?category=Caps%20%26%20Hats' },
-      ],
-    },
+  const navItems = [
+    { label: 'Clothing', matchName: 'Costume', fallbackSlug: 'costume' },
+    { label: 'Accessories', matchName: 'Accessories', fallbackSlug: 'accessories' },
+    { label: 'Watches', matchName: 'Luxury Watches', fallbackSlug: 'watches' },
+    { label: 'Chains', matchName: 'Chains & Necklaces', fallbackSlug: 'chains' },
+    { label: 'Caps', matchName: 'Caps & Hats', fallbackSlug: 'caps' },
   ];
+
+  const getCategoryForNav = (matchName: string, fallbackSlug: string) => {
+    return categories.find(
+      (c) =>
+        c.name.toLowerCase() === matchName.toLowerCase() ||
+        c.slug.toLowerCase() === fallbackSlug.toLowerCase()
+    );
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-[#f7f5ee] border-b border-[#e5dfd3]/60 transition-colors backdrop-blur-md bg-[#f7f5ee]/95">
@@ -103,37 +89,61 @@ export default function Navbar() {
               Shop
             </Link>
 
-            {navCategories.map((cat) => (
-              <div
-                key={cat.name}
-                className="relative group py-2"
-                onMouseEnter={() => setActiveDropdown(cat.name)}
-                onMouseLeave={() => setActiveDropdown(null)}
-              >
-                <Link
-                  href={cat.href}
-                  className="flex items-center gap-1 hover:text-black transition-colors"
-                >
-                  <span>{cat.name}</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-neutral-500 transition-transform duration-200 group-hover:rotate-180" />
-                </Link>
+            {navItems.map((item) => {
+              const catObj = getCategoryForNav(item.matchName, item.fallbackSlug);
+              const catName = catObj ? catObj.name : item.matchName;
+              const subcategories = catObj?.subcategories || [];
 
-                {/* Dropdown Menu */}
-                {activeDropdown === cat.name && (
-                  <div className="absolute top-full left-0 w-56 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-neutral-100 py-2.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-                    {cat.items.map((sub) => (
+              return (
+                <div
+                  key={item.label}
+                  className="relative group py-2"
+                  onMouseEnter={() => setActiveDropdown(item.label)}
+                  onMouseLeave={() => setActiveDropdown(null)}
+                >
+                  <Link
+                    href={`/shop?category=${encodeURIComponent(catName)}`}
+                    className="flex items-center gap-1 hover:text-black transition-colors"
+                  >
+                    <span>{item.label}</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-neutral-500 transition-transform duration-200 group-hover:rotate-180" />
+                  </Link>
+
+                  {/* Dropdown Menu showing subcategories on hover */}
+                  {activeDropdown === item.label && (
+                    <div className="absolute top-full left-0 w-60 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-neutral-100 p-2 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                      <div className="px-3 py-1.5 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+                        Subcategories
+                      </div>
+
                       <Link
-                        key={sub.name}
-                        href={sub.href}
-                        className="block px-4 py-2 text-xs sm:text-sm text-neutral-700 hover:text-black hover:bg-neutral-50 transition-colors"
+                        href={`/shop?category=${encodeURIComponent(catName)}`}
+                        className="flex items-center justify-between px-3 py-2 text-xs font-bold text-neutral-900 hover:bg-neutral-100 rounded-xl transition-colors"
                       >
-                        {sub.name}
+                        <span>All {item.label}</span>
+                        <span className="text-[10px] text-neutral-400 font-semibold">View All →</span>
                       </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+
+                      <div className="h-px bg-neutral-100 my-1" />
+
+                      {subcategories.length > 0 ? (
+                        subcategories.map((sub) => (
+                          <Link
+                            key={sub}
+                            href={`/shop?category=${encodeURIComponent(catName)}&subcategory=${encodeURIComponent(sub)}`}
+                            className="flex items-center justify-between px-3 py-2 text-xs font-semibold text-neutral-700 hover:text-black hover:bg-neutral-100 rounded-xl transition-colors"
+                          >
+                            <span>{sub}</span>
+                          </Link>
+                        ))
+                      ) : (
+                        <p className="px-3 py-2 text-xs text-neutral-400 italic">No subcategories yet</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             <Link
               href="/track-order"
@@ -268,19 +278,65 @@ export default function Navbar() {
               </Link>
 
               <div className="pt-2 pb-1 px-3 text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
-                Categories
+                Categories & Subcategories
               </div>
 
-              {navCategories.map((cat) => (
-                <Link
-                  key={cat.name}
-                  href={cat.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block px-3.5 py-2 rounded-lg text-sm font-medium text-neutral-700 hover:text-black hover:bg-white transition-colors"
-                >
-                  {cat.name}
-                </Link>
-              ))}
+              {navItems.map((item) => {
+                const catObj = getCategoryForNav(item.matchName, item.fallbackSlug);
+                const catName = catObj ? catObj.name : item.matchName;
+                const subcategories = catObj?.subcategories || [];
+                const isExpanded = mobileCategoryOpen === item.label;
+
+                return (
+                  <div key={item.label} className="space-y-1">
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-lg text-sm font-medium text-neutral-800 hover:bg-white transition-colors">
+                      <Link
+                        href={`/shop?category=${encodeURIComponent(catName)}`}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="flex-1 font-semibold"
+                      >
+                        {item.label}
+                      </Link>
+                      {subcategories.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMobileCategoryOpen(isExpanded ? null : item.label);
+                          }}
+                          className="p-1 text-neutral-500 hover:text-black cursor-pointer"
+                        >
+                          <ChevronDown
+                            className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+                      )}
+                    </div>
+
+                    {isExpanded && subcategories.length > 0 && (
+                      <div className="ml-4 pl-3 border-l-2 border-neutral-200 space-y-1 py-1 animate-in fade-in duration-150">
+                        <Link
+                          href={`/shop?category=${encodeURIComponent(catName)}`}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="block px-2.5 py-1.5 text-xs font-bold text-neutral-900 hover:bg-white rounded-md"
+                        >
+                          All {item.label}
+                        </Link>
+                        {subcategories.map((sub) => (
+                          <Link
+                            key={sub}
+                            href={`/shop?category=${encodeURIComponent(catName)}&subcategory=${encodeURIComponent(sub)}`}
+                            onClick={() => setMobileMenuOpen(false)}
+                            className="block px-2.5 py-1.5 text-xs font-medium text-neutral-600 hover:text-black hover:bg-white rounded-md"
+                          >
+                            {sub}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
               <div className="pt-2 border-t border-neutral-200/60 space-y-1">
                 <Link

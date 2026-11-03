@@ -12,20 +12,25 @@ import {
   Heart,
   Check,
   ChevronDown,
+  ChevronRight,
+  Plus,
+  Tag,
   X,
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
-import { IProduct } from '@/types';
+import { IProduct, ICategory } from '@/types';
 
 interface ShopClientProps {
   initialProducts: IProduct[];
   categories: string[];
+  categoriesData?: ICategory[];
 }
 
 export default function ShopClient({
   initialProducts,
   categories,
+  categoriesData = [],
 }: ShopClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -33,8 +38,12 @@ export default function ShopClient({
   const { toggleWishlist, isInWishlist, wishlist } = useWishlist();
 
   const [products] = useState<IProduct[]>(initialProducts);
+  const [categoryList, setCategoryList] = useState<ICategory[]>(categoriesData);
   const [selectedCategory, setSelectedCategory] = useState<string>(
     searchParams.get('category') || 'all'
+  );
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>(
+    searchParams.get('subcategory') || 'all'
   );
   const [searchQuery, setSearchQuery] = useState<string>(
     searchParams.get('search') || ''
@@ -54,10 +63,69 @@ export default function ShopClient({
   useEffect(() => {
     const cat = searchParams.get('category');
     if (cat) setSelectedCategory(cat);
+    else setSelectedCategory('all');
+
+    const sub = searchParams.get('subcategory');
+    if (sub) setSelectedSubcategory(sub);
+    else setSelectedSubcategory('all');
+
     const q = searchParams.get('search');
     if (q) setSearchQuery(q);
     if (searchParams.get('wishlist') === 'true') setShowWishlistOnly(true);
   }, [searchParams]);
+
+  // Fallback: Fetch categories with subcategories if empty
+  useEffect(() => {
+    if (categoryList.length === 0) {
+      fetch('/api/categories')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.categories) {
+            setCategoryList(data.categories);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [categoryList.length]);
+
+  const getSubcategoriesForCategory = (catName: string): string[] => {
+    const catObj = categoryList.find(
+      (c) =>
+        c.name.toLowerCase() === catName.toLowerCase() ||
+        c.slug.toLowerCase() === catName.toLowerCase()
+    );
+    return catObj?.subcategories || [];
+  };
+
+  const handleSelectCategory = (cat: string) => {
+    setSelectedCategory(cat);
+    setSelectedSubcategory('all');
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (cat === 'all') {
+      params.delete('category');
+    } else {
+      params.set('category', cat);
+    }
+    params.delete('subcategory');
+    router.push(`/shop?${params.toString()}`);
+  };
+
+  const handleSelectSubcategory = (sub: string) => {
+    setSelectedSubcategory(sub);
+    const params = new URLSearchParams(searchParams.toString());
+    if (sub === 'all') {
+      params.delete('subcategory');
+    } else {
+      params.set('subcategory', sub);
+    }
+    router.push(`/shop?${params.toString()}`);
+  };
+
+  const currentCategorySubcategories = useMemo(() => {
+    if (!selectedCategory || selectedCategory === 'all') return [];
+    return getSubcategoriesForCategory(selectedCategory);
+  }, [selectedCategory, categoryList]);
 
   const filteredProducts = useMemo(() => {
     let result = [...products];
@@ -69,6 +137,17 @@ export default function ShopClient({
         (p) =>
           p.category.toLowerCase() === lower ||
           p.category.toLowerCase().includes(lower)
+      );
+    }
+
+    // Subcategory filter
+    if (selectedSubcategory && selectedSubcategory !== 'all') {
+      const subLower = selectedSubcategory.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.subcategory &&
+          (p.subcategory.toLowerCase() === subLower ||
+           p.subcategory.toLowerCase().includes(subLower))
       );
     }
 
@@ -111,6 +190,7 @@ export default function ShopClient({
   }, [
     products,
     selectedCategory,
+    selectedSubcategory,
     searchQuery,
     priceRange,
     showInStockOnly,
@@ -140,6 +220,7 @@ export default function ShopClient({
 
   const clearAllFilters = () => {
     setSelectedCategory('all');
+    setSelectedSubcategory('all');
     setSearchQuery('');
     setPriceRange(5000);
     setShowInStockOnly(false);
@@ -167,11 +248,24 @@ export default function ShopClient({
                 {showWishlistOnly
                   ? 'Your Wishlist'
                   : selectedCategory !== 'all'
-                  ? selectedCategory
+                  ? selectedSubcategory !== 'all'
+                    ? `${selectedCategory} — ${selectedSubcategory}`
+                    : selectedCategory
                   : 'All Collections'}
               </h1>
               <p className="text-xs sm:text-sm text-neutral-500 mt-1">
                 Showing {filteredProducts.length} curated products direct from verified suppliers
+                {selectedSubcategory !== 'all' && (
+                  <span className="ml-2 inline-flex items-center gap-1 bg-black text-white px-2 py-0.5 rounded-full text-[10px] font-bold">
+                    <span>{selectedSubcategory}</span>
+                    <button
+                      onClick={() => handleSelectSubcategory('all')}
+                      className="hover:text-red-300 ml-0.5 cursor-pointer"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                )}
               </p>
             </div>
 
@@ -237,42 +331,116 @@ export default function ShopClient({
               </div>
             </div>
 
-            {/* Category Filter Pills */}
+            {/* Category Filter Pills & Dynamic Subcategories */}
             <div>
-              <label className="block text-xs font-bold text-neutral-800 uppercase tracking-wider mb-2.5">
-                Categories
-              </label>
+              <div className="flex items-center justify-between mb-2.5">
+                <label className="block text-xs font-bold text-neutral-800 uppercase tracking-wider">
+                  Categories
+                </label>
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <button
-                  onClick={() => setSelectedCategory('all')}
-                  className={`text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-between ${
+                  onClick={() => handleSelectCategory('all')}
+                  className={`text-left px-3 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
                     selectedCategory === 'all'
-                      ? 'bg-black text-white'
+                      ? 'bg-black text-white shadow-xs'
                       : 'text-neutral-700 hover:bg-neutral-100'
                   }`}
                 >
                   <span>All Categories</span>
-                  <span>{products.length}</span>
+                  <span className={selectedCategory === 'all' ? 'text-neutral-300' : 'text-neutral-400'}>
+                    {products.length}
+                  </span>
                 </button>
+
                 {categories.map((cat) => {
                   const count = products.filter(
                     (p) => p.category.toLowerCase() === cat.toLowerCase()
                   ).length;
                   const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
+                  const catSubcats = getSubcategoriesForCategory(cat);
 
                   return (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-between ${
-                        isSelected
-                          ? 'bg-black text-white'
-                          : 'text-neutral-700 hover:bg-neutral-100'
-                      }`}
-                    >
-                      <span className="truncate">{cat}</span>
-                      <span className="text-neutral-400 text-[11px]">{count}</span>
-                    </button>
+                    <div key={cat} className="space-y-1">
+                      <button
+                        onClick={() => handleSelectCategory(cat)}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                          isSelected
+                            ? 'bg-black text-white shadow-xs'
+                            : 'text-neutral-700 hover:bg-neutral-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="truncate">{cat}</span>
+                          {catSubcats.length > 0 && (
+                            <span
+                              className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                                isSelected ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200/80 text-neutral-600'
+                              }`}
+                            >
+                              {catSubcats.length}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className={`text-[11px] ${isSelected ? 'text-neutral-300' : 'text-neutral-400'}`}>
+                            {count}
+                          </span>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                              isSelected ? 'rotate-180 text-white' : 'text-neutral-400'
+                            }`}
+                          />
+                        </div>
+                      </button>
+
+                      {/* Subcategories list revealed when category is selected */}
+                      {isSelected && (
+                        <div className="ml-3 pl-2.5 border-l-2 border-neutral-300 py-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                          <button
+                            onClick={() => handleSelectSubcategory('all')}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
+                              selectedSubcategory === 'all'
+                                ? 'bg-neutral-900 text-white font-bold'
+                                : 'text-neutral-600 hover:bg-neutral-100 font-medium'
+                            }`}
+                          >
+                            <span>All {cat}</span>
+                            <span className={`text-[10px] ${selectedSubcategory === 'all' ? 'text-neutral-300' : 'text-neutral-400'}`}>
+                              {count}
+                            </span>
+                          </button>
+
+                          {catSubcats.map((sub) => {
+                            const subCount = products.filter(
+                              (p) =>
+                                (p.category.toLowerCase() === cat.toLowerCase() ||
+                                 p.category.toLowerCase().includes(cat.toLowerCase())) &&
+                                p.subcategory?.toLowerCase() === sub.toLowerCase()
+                            ).length;
+                            const isSubSelected = selectedSubcategory.toLowerCase() === sub.toLowerCase();
+
+                            return (
+                              <button
+                                key={sub}
+                                onClick={() => handleSelectSubcategory(sub)}
+                                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
+                                  isSubSelected
+                                    ? 'bg-black text-white font-bold shadow-xs'
+                                    : 'text-neutral-600 hover:bg-neutral-100 font-medium'
+                                }`}
+                              >
+                                <span className="truncate">{sub}</span>
+                                <span className={`text-[10px] ${isSubSelected ? 'text-neutral-300' : 'text-neutral-400'}`}>
+                                  {subCount}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -323,18 +491,70 @@ export default function ShopClient({
           </aside>
 
           {/* Product Grid Area */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3 space-y-6">
+            {/* Top Subcategory Chips Bar when category is active */}
+            {selectedCategory !== 'all' && (
+              <div className="bg-white/80 backdrop-blur-sm p-3 rounded-2xl border border-neutral-200/80 shadow-xs flex items-center gap-2 overflow-x-auto">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-500 uppercase tracking-wider pl-1 pr-2 flex-shrink-0">
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>Subcategory:</span>
+                </div>
+
+                <button
+                  onClick={() => handleSelectSubcategory('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                    selectedSubcategory === 'all'
+                      ? 'bg-black text-white shadow-xs'
+                      : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+                  }`}
+                >
+                  All {selectedCategory}
+                </button>
+
+                {currentCategorySubcategories.map((sub) => {
+                  const isSubActive = selectedSubcategory.toLowerCase() === sub.toLowerCase();
+                  const subCount = products.filter(
+                    (p) =>
+                      (p.category.toLowerCase() === selectedCategory.toLowerCase() ||
+                       p.category.toLowerCase().includes(selectedCategory.toLowerCase())) &&
+                      p.subcategory?.toLowerCase() === sub.toLowerCase()
+                  ).length;
+
+                  return (
+                    <button
+                      key={sub}
+                      onClick={() => handleSelectSubcategory(sub)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                        isSubActive
+                          ? 'bg-black text-white shadow-xs'
+                          : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+                      }`}
+                    >
+                      <span>{sub}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                          isSubActive ? 'bg-neutral-800 text-white' : 'bg-neutral-200 text-neutral-600'
+                        }`}
+                      >
+                        {subCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {filteredProducts.length === 0 ? (
               <div className="bg-white rounded-3xl p-12 text-center border border-neutral-200">
                 <p className="text-base font-bold text-neutral-900 mb-2">
                   No products matched your criteria
                 </p>
                 <p className="text-xs text-neutral-500 mb-6 max-w-sm mx-auto">
-                  Try adjusting your search keywords, price filter, or switching categories.
+                  Try adjusting your search keywords, price filter, or switching categories and subcategories.
                 </p>
                 <button
                   onClick={clearAllFilters}
-                  className="bg-black text-white text-xs font-semibold px-6 py-2.5 rounded-full hover:bg-neutral-800"
+                  className="bg-black text-white text-xs font-semibold px-6 py-2.5 rounded-full hover:bg-neutral-800 cursor-pointer"
                 >
                   Reset All Filters
                 </button>
@@ -387,8 +607,16 @@ export default function ShopClient({
 
                       {/* Info */}
                       <div className="pt-4 pb-2">
-                        <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-1">
-                          {product.category}
+                        <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-1 flex items-center gap-1.5 flex-wrap">
+                          <span>{product.category}</span>
+                          {product.subcategory && (
+                            <>
+                              <span className="text-neutral-300">•</span>
+                              <span className="text-neutral-800 font-bold bg-neutral-100 px-1.5 py-0.2 rounded text-[10px]">
+                                {product.subcategory}
+                              </span>
+                            </>
+                          )}
                         </p>
                         <Link
                           href={`/products/${product.slug}`}
@@ -459,43 +687,87 @@ export default function ShopClient({
             onClick={() => setMobileFilterOpen(false)}
           />
           <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-            <div className="w-screen max-w-xs bg-white p-6 flex flex-col justify-between">
+            <div className="w-screen max-w-xs bg-white p-6 flex flex-col justify-between overflow-y-auto">
               <div className="space-y-6">
                 <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
                   <h3 className="font-bold text-sm text-neutral-900">Filters</h3>
-                  <button onClick={() => setMobileFilterOpen(false)}>
+                  <button onClick={() => setMobileFilterOpen(false)} className="cursor-pointer">
                     <X className="w-5 h-5 text-neutral-500" />
                   </button>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold mb-2">Categories</label>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold">Categories</label>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
                     <button
                       onClick={() => {
-                        setSelectedCategory('all');
+                        handleSelectCategory('all');
                         setMobileFilterOpen(false);
                       }}
-                      className={`text-left text-xs px-3 py-2 rounded-lg ${
-                        selectedCategory === 'all' ? 'bg-black text-white font-bold' : ''
+                      className={`text-left text-xs px-3 py-2 rounded-lg cursor-pointer ${
+                        selectedCategory === 'all' ? 'bg-black text-white font-bold' : 'text-neutral-700 hover:bg-neutral-100'
                       }`}
                     >
                       All Categories
                     </button>
-                    {categories.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => {
-                          setSelectedCategory(c);
-                          setMobileFilterOpen(false);
-                        }}
-                        className={`text-left text-xs px-3 py-2 rounded-lg ${
-                          selectedCategory === c ? 'bg-black text-white font-bold' : ''
-                        }`}
-                      >
-                        {c}
-                      </button>
-                    ))}
+                    {categories.map((c) => {
+                      const isCatActive = selectedCategory === c;
+                      const catSubcats = getSubcategoriesForCategory(c);
+
+                      return (
+                        <div key={c} className="space-y-1">
+                          <button
+                            onClick={() => handleSelectCategory(c)}
+                            className={`w-full text-left text-xs px-3 py-2 rounded-lg flex items-center justify-between cursor-pointer ${
+                              isCatActive ? 'bg-black text-white font-bold' : 'text-neutral-700 hover:bg-neutral-100'
+                            }`}
+                          >
+                            <span>{c}</span>
+                            <ChevronDown
+                              className={`w-3.5 h-3.5 ${isCatActive ? 'rotate-180 text-white' : 'text-neutral-400'}`}
+                            />
+                          </button>
+
+                          {/* Subcategories in mobile */}
+                          {isCatActive && (
+                            <div className="ml-3 pl-2.5 border-l-2 border-neutral-300 py-1 space-y-1">
+                              <button
+                                onClick={() => {
+                                  handleSelectSubcategory('all');
+                                  setMobileFilterOpen(false);
+                                }}
+                                className={`w-full text-left text-xs px-2.5 py-1.5 rounded-md cursor-pointer ${
+                                  selectedSubcategory === 'all'
+                                    ? 'bg-neutral-800 text-white font-bold'
+                                    : 'text-neutral-600 hover:bg-neutral-100'
+                                }`}
+                              >
+                                All {c}
+                              </button>
+                              {catSubcats.map((sub) => (
+                                <button
+                                  key={sub}
+                                  onClick={() => {
+                                    handleSelectSubcategory(sub);
+                                    setMobileFilterOpen(false);
+                                  }}
+                                  className={`w-full text-left text-xs px-2.5 py-1.5 rounded-md cursor-pointer ${
+                                    selectedSubcategory.toLowerCase() === sub.toLowerCase()
+                                      ? 'bg-black text-white font-bold'
+                                      : 'text-neutral-600 hover:bg-neutral-100'
+                                  }`}
+                                >
+                                  {sub}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -510,14 +782,14 @@ export default function ShopClient({
                     step="100"
                     value={priceRange}
                     onChange={(e) => setPriceRange(Number(e.target.value))}
-                    className="w-full accent-black"
+                    className="w-full accent-black cursor-pointer"
                   />
                 </div>
               </div>
 
               <button
                 onClick={() => setMobileFilterOpen(false)}
-                className="w-full bg-black text-white py-3 rounded-xl font-bold text-xs"
+                className="w-full bg-black text-white py-3 rounded-xl font-bold text-xs mt-6 cursor-pointer"
               >
                 Apply Filters ({filteredProducts.length} Results)
               </button>

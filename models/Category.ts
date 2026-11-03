@@ -8,6 +8,7 @@ export interface ICategoryDoc extends Document {
   itemCount: number;
   isActive: boolean;
   order: number;
+  subcategories: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +22,7 @@ const CategorySchema = new Schema<ICategoryDoc>(
     itemCount: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
     order: { type: Number, default: 0 },
+    subcategories: { type: [String], default: [] },
   },
   { timestamps: true }
 );
