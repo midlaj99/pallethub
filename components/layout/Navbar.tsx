@@ -10,14 +10,12 @@ import {
   ChevronDown,
   Menu,
   X,
-  ShieldCheck,
   Package,
 } from 'lucide-react';
 import Logo from '@/components/ui/Logo';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { ICategory } from '@/types';
-import { INITIAL_CATEGORIES } from '@/lib/data/initialData';
 
 export default function Navbar() {
   const router = useRouter();
@@ -28,13 +26,13 @@ export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileCategoryOpen, setMobileCategoryOpen] = useState<string | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-  const [categories, setCategories] = useState<ICategory[]>(INITIAL_CATEGORIES);
+  const [categories, setCategories] = useState<ICategory[]>([]);
 
   useEffect(() => {
     fetch('/api/categories')
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.categories && data.categories.length > 0) {
+        if (data.success && Array.isArray(data.categories)) {
           setCategories(data.categories);
         }
       })
@@ -47,22 +45,6 @@ export default function Navbar() {
       router.push(`/shop?search=${encodeURIComponent(searchQuery.trim())}`);
       setMobileMenuOpen(false);
     }
-  };
-
-  const navItems = [
-    { label: 'Clothing', matchName: 'Costume', fallbackSlug: 'costume' },
-    { label: 'Accessories', matchName: 'Accessories', fallbackSlug: 'accessories' },
-    { label: 'Watches', matchName: 'Luxury Watches', fallbackSlug: 'watches' },
-    { label: 'Chains', matchName: 'Chains & Necklaces', fallbackSlug: 'chains' },
-    { label: 'Caps', matchName: 'Caps & Hats', fallbackSlug: 'caps' },
-  ];
-
-  const getCategoryForNav = (matchName: string, fallbackSlug: string) => {
-    return categories.find(
-      (c) =>
-        c.name.toLowerCase() === matchName.toLowerCase() ||
-        c.slug.toLowerCase() === fallbackSlug.toLowerCase()
-    );
   };
 
   return (
@@ -89,56 +71,55 @@ export default function Navbar() {
               Shop
             </Link>
 
-            {navItems.map((item) => {
-              const catObj = getCategoryForNav(item.matchName, item.fallbackSlug);
-              const catName = catObj ? catObj.name : item.matchName;
-              const subcategories = catObj?.subcategories || [];
+            {/* Dynamic Categories & Subcategories added from Admin */}
+            {categories.map((cat) => {
+              const catName = cat.name;
+              const catSlug = cat.slug || cat.name;
+              const subcategories = cat.subcategories || [];
 
               return (
                 <div
-                  key={item.label}
+                  key={cat._id || catSlug}
                   className="relative group py-2"
-                  onMouseEnter={() => setActiveDropdown(item.label)}
+                  onMouseEnter={() => setActiveDropdown(catName)}
                   onMouseLeave={() => setActiveDropdown(null)}
                 >
                   <Link
-                    href={`/shop?category=${encodeURIComponent(catName)}`}
+                    href={`/shop?category=${encodeURIComponent(catSlug)}`}
                     className="flex items-center gap-1 hover:text-black transition-colors"
                   >
-                    <span>{item.label}</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-neutral-500 transition-transform duration-200 group-hover:rotate-180" />
+                    <span>{catName}</span>
+                    {subcategories.length > 0 && (
+                      <ChevronDown className="w-3.5 h-3.5 text-neutral-500 transition-transform duration-200 group-hover:rotate-180" />
+                    )}
                   </Link>
 
                   {/* Dropdown Menu showing subcategories on hover */}
-                  {activeDropdown === item.label && (
+                  {activeDropdown === catName && subcategories.length > 0 && (
                     <div className="absolute top-full left-0 w-60 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-neutral-100 p-2 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
                       <div className="px-3 py-1.5 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
                         Subcategories
                       </div>
 
                       <Link
-                        href={`/shop?category=${encodeURIComponent(catName)}`}
+                        href={`/shop?category=${encodeURIComponent(catSlug)}`}
                         className="flex items-center justify-between px-3 py-2 text-xs font-bold text-neutral-900 hover:bg-neutral-100 rounded-xl transition-colors"
                       >
-                        <span>All {item.label}</span>
+                        <span>All {catName}</span>
                         <span className="text-[10px] text-neutral-400 font-semibold">View All →</span>
                       </Link>
 
                       <div className="h-px bg-neutral-100 my-1" />
 
-                      {subcategories.length > 0 ? (
-                        subcategories.map((sub) => (
-                          <Link
-                            key={sub}
-                            href={`/shop?category=${encodeURIComponent(catName)}&subcategory=${encodeURIComponent(sub)}`}
-                            className="flex items-center justify-between px-3 py-2 text-xs font-semibold text-neutral-700 hover:text-black hover:bg-neutral-100 rounded-xl transition-colors"
-                          >
-                            <span>{sub}</span>
-                          </Link>
-                        ))
-                      ) : (
-                        <p className="px-3 py-2 text-xs text-neutral-400 italic">No subcategories yet</p>
-                      )}
+                      {subcategories.map((sub) => (
+                        <Link
+                          key={sub}
+                          href={`/shop?category=${encodeURIComponent(catSlug)}&subcategory=${encodeURIComponent(sub)}`}
+                          className="flex items-center justify-between px-3 py-2 text-xs font-semibold text-neutral-700 hover:text-black hover:bg-neutral-100 rounded-xl transition-colors"
+                        >
+                          <span>{sub}</span>
+                        </Link>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -163,110 +144,80 @@ export default function Navbar() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search Product..."
-              className="w-full bg-white rounded-full py-2.5 pl-10 pr-4 text-xs sm:text-sm text-neutral-900 placeholder:text-neutral-400 border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-400 transition-all shadow-sm"
+              placeholder="Search collections..."
+              className="w-full bg-[#eeeae0] text-neutral-800 placeholder:text-neutral-500 text-xs rounded-full py-2.5 pl-10 pr-4 focus:outline-none focus:ring-1 focus:ring-black border-transparent"
             />
           </form>
 
-          {/* Right Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-4">
-            {/* Mobile Quick Shop Button in Navbar Header Wrapper */}
-            <Link
-              href="/shop"
-              className="lg:hidden flex items-center gap-1.5 text-xs font-bold py-1.5 px-3 rounded-full bg-black text-white hover:bg-neutral-800 transition-all shadow-sm active:scale-95"
-              aria-label="Shop Catalog"
-            >
-              <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Shop</span>
-            </Link>
-
+          {/* Right Action Icons: Wishlist & Bag */}
+          <div className="flex items-center gap-3 sm:gap-4">
             {/* Wishlist Link */}
             <Link
               href="/shop?wishlist=true"
-              className="relative p-2 text-neutral-700 hover:text-black hover:bg-neutral-200/50 rounded-full transition-colors hidden sm:flex"
-              title="View Wishlist"
+              className="relative p-2 rounded-full hover:bg-[#ece8de] text-neutral-800 transition-colors"
+              title="My Wishlist"
             >
               <Heart className="w-5 h-5" />
               {wishlist.length > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 bg-red-600 text-white font-bold text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
                   {wishlist.length}
                 </span>
               )}
             </Link>
 
-            {/* Shopping Cart Button */}
+            {/* Shopping Bag Button with totalItemsCount Pill */}
             <button
               onClick={() => setIsOpen(true)}
-              className="relative p-2 text-neutral-800 hover:text-black hover:bg-neutral-200/50 rounded-full transition-colors flex items-center"
-              aria-label="Open Cart"
+              className="relative flex items-center gap-2 bg-black hover:bg-neutral-800 text-white text-xs font-semibold px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-full shadow-sm transition-all duration-200 cursor-pointer"
             >
-              <ShoppingBag className="w-5 h-5" />
+              <ShoppingBag className="w-4 h-4" />
+              <span className="hidden sm:inline">Bag</span>
               {totalItemsCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 bg-black text-white rounded-full text-[10px] font-bold flex items-center justify-center shadow-md animate-in zoom-in-75 duration-200">
+                <span className="bg-[#e4d5be] text-black font-extrabold text-[11px] px-1.5 py-0.2 rounded-full min-w-[18px] text-center">
                   {totalItemsCount}
                 </span>
               )}
             </button>
 
-            {/* Mobile Menu Toggle */}
+            {/* Mobile Menu Hamburger Toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 text-neutral-800 hover:text-black rounded-lg"
-              aria-label="Toggle menu"
+              className="p-2 rounded-lg text-neutral-800 hover:bg-[#ece8de] lg:hidden transition-colors"
+              aria-label="Toggle Navigation Menu"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
 
-        {/* Mobile Navigation Drawer */}
+        {/* Mobile Slide-down Menu Drawer */}
         {mobileMenuOpen && (
-          <div className="lg:hidden py-4 border-t border-neutral-200 space-y-3 animate-in fade-in duration-200">
-            <form onSubmit={handleSearchSubmit} className="relative">
-              <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-3 pointer-events-none" />
+          <div className="lg:hidden border-t border-[#ded7ca] py-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
+            {/* Mobile Search */}
+            <form onSubmit={handleSearchSubmit} className="relative px-2">
+              <Search className="w-4 h-4 text-neutral-400 absolute left-5 top-3 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search products..."
-                className="w-full bg-white rounded-xl py-2 pl-9 pr-4 text-sm border border-neutral-200 focus:outline-none shadow-sm"
+                placeholder="Search collections..."
+                className="w-full bg-[#eeeae0] text-neutral-800 placeholder:text-neutral-500 text-xs rounded-full py-2.5 pl-10 pr-4 focus:outline-none focus:ring-1 focus:ring-black"
               />
             </form>
 
-            {/* Primary Action Buttons in Mobile View */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <Link
-                href="/shop"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-center gap-2 p-3 rounded-xl bg-black text-white text-sm font-bold text-center shadow-sm hover:bg-neutral-800 transition-all"
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>Shop Catalog</span>
-              </Link>
-              <Link
-                href="/admin"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-center gap-2 p-3 rounded-xl bg-white border border-neutral-200 text-neutral-800 text-sm font-semibold text-center hover:bg-neutral-50 transition-all"
-              >
-                <ShieldCheck className="w-4 h-4 text-neutral-600" />
-                <span>Admin Panel</span>
-              </Link>
-            </div>
-
-            {/* Navigation Links in Mobile View */}
-            <div className="space-y-1 pt-1">
+            {/* Mobile Links */}
+            <div className="flex flex-col space-y-1 px-2">
               <Link
                 href="/"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold text-neutral-900 hover:bg-white transition-colors"
+                className="px-3.5 py-2.5 rounded-lg text-sm font-medium text-neutral-800 hover:bg-white transition-colors"
               >
-                <span>Home</span>
+                Home
               </Link>
-
               <Link
                 href="/shop"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-bold text-neutral-900 bg-white border border-neutral-200 shadow-xs hover:bg-neutral-50 transition-colors"
+                className="flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-medium text-neutral-800 hover:bg-white transition-colors"
               >
                 <span className="flex items-center gap-2">
                   <ShoppingBag className="w-4 h-4 text-black" />
@@ -277,32 +228,35 @@ export default function Navbar() {
                 </span>
               </Link>
 
-              <div className="pt-2 pb-1 px-3 text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
-                Categories & Subcategories
-              </div>
+              {categories.length > 0 && (
+                <div className="pt-2 pb-1 px-3 text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+                  Categories & Subcategories
+                </div>
+              )}
 
-              {navItems.map((item) => {
-                const catObj = getCategoryForNav(item.matchName, item.fallbackSlug);
-                const catName = catObj ? catObj.name : item.matchName;
-                const subcategories = catObj?.subcategories || [];
-                const isExpanded = mobileCategoryOpen === item.label;
+              {/* Dynamic Mobile Categories & Subcategories */}
+              {categories.map((cat) => {
+                const catName = cat.name;
+                const catSlug = cat.slug || cat.name;
+                const subcategories = cat.subcategories || [];
+                const isExpanded = mobileCategoryOpen === catName;
 
                 return (
-                  <div key={item.label} className="space-y-1">
+                  <div key={cat._id || catSlug} className="space-y-1">
                     <div className="flex items-center justify-between px-3.5 py-2 rounded-lg text-sm font-medium text-neutral-800 hover:bg-white transition-colors">
                       <Link
-                        href={`/shop?category=${encodeURIComponent(catName)}`}
+                        href={`/shop?category=${encodeURIComponent(catSlug)}`}
                         onClick={() => setMobileMenuOpen(false)}
                         className="flex-1 font-semibold"
                       >
-                        {item.label}
+                        {catName}
                       </Link>
                       {subcategories.length > 0 && (
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setMobileCategoryOpen(isExpanded ? null : item.label);
+                            setMobileCategoryOpen(isExpanded ? null : catName);
                           }}
                           className="p-1 text-neutral-500 hover:text-black cursor-pointer"
                         >
@@ -316,16 +270,16 @@ export default function Navbar() {
                     {isExpanded && subcategories.length > 0 && (
                       <div className="ml-4 pl-3 border-l-2 border-neutral-200 space-y-1 py-1 animate-in fade-in duration-150">
                         <Link
-                          href={`/shop?category=${encodeURIComponent(catName)}`}
+                          href={`/shop?category=${encodeURIComponent(catSlug)}`}
                           onClick={() => setMobileMenuOpen(false)}
                           className="block px-2.5 py-1.5 text-xs font-bold text-neutral-900 hover:bg-white rounded-md"
                         >
-                          All {item.label}
+                          All {catName}
                         </Link>
                         {subcategories.map((sub) => (
                           <Link
                             key={sub}
-                            href={`/shop?category=${encodeURIComponent(catName)}&subcategory=${encodeURIComponent(sub)}`}
+                            href={`/shop?category=${encodeURIComponent(catSlug)}&subcategory=${encodeURIComponent(sub)}`}
                             onClick={() => setMobileMenuOpen(false)}
                             className="block px-2.5 py-1.5 text-xs font-medium text-neutral-600 hover:text-black hover:bg-white rounded-md"
                           >

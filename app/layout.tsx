@@ -17,6 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://palettehubb.com'),
   title: 'Palette Hubb — Premier Fashion & Lifestyle Dropshipping',
   description:
     'Discover tailored blazers, oversized tees, luxury chronographs, cuban chains, and curated accessories at Palette Hubb. Direct supplier-fulfilled fashion dropshipping.',

@@ -663,7 +663,7 @@ export default function ShopClient({
                         <button
                           onClick={(e) => handleBuyNow(product, e)}
                           disabled={product.stock <= 0}
-                          className="py-2 px-2 rounded-xl text-xs font-semibold bg-neutral-900 text-white hover:bg-black flex items-center justify-center transition-all duration-200 shadow-sm cursor-pointer active:scale-[0.98]"
+                          className="py-2 px-2 rounded-xl text-xs font-semibold bg-[#985842] text-white hover:bg-[#834633] flex items-center justify-center transition-all duration-200 shadow-sm cursor-pointer active:scale-[0.98]"
                         >
                           Buy Now
                         </button>

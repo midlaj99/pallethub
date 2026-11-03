@@ -1,5 +1,21 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+export interface IOrderItemDoc {
+  productId: string;
+  name: string;
+  slug: string;
+  image: string;
+  price: number;
+  quantity: number;
+  size?: string;
+  color?: string;
+  supplierId?: string;
+  supplierName?: string;
+  itemStatus?: 'Pending' | 'Processing' | 'Dispatched' | 'Delivered' | 'Cancelled';
+  trackingNumber?: string;
+  trackingCarrier?: string;
+}
+
 export interface IOrderDoc extends Document {
   orderNumber: string;
   customer: {
@@ -12,16 +28,7 @@ export interface IOrderDoc extends Document {
     pincode: string;
     country: string;
   };
-  items: Array<{
-    productId: string;
-    name: string;
-    slug: string;
-    image: string;
-    price: number;
-    quantity: number;
-    size?: string;
-    color?: string;
-  }>;
+  items: IOrderItemDoc[];
   subtotal: number;
   discount: number;
   couponCode?: string;
@@ -49,6 +56,29 @@ export interface IOrderDoc extends Document {
   updatedAt: Date;
 }
 
+const OrderItemSchema = new Schema(
+  {
+    productId: { type: String, required: true },
+    name: { type: String, required: true },
+    slug: { type: String, required: true },
+    image: { type: String, required: true },
+    price: { type: Number, required: true },
+    quantity: { type: Number, required: true, min: 1 },
+    size: { type: String },
+    color: { type: String },
+    supplierId: { type: String, index: true },
+    supplierName: { type: String },
+    itemStatus: {
+      type: String,
+      enum: ['Pending', 'Processing', 'Dispatched', 'Delivered', 'Cancelled'],
+      default: 'Pending',
+    },
+    trackingNumber: { type: String },
+    trackingCarrier: { type: String },
+  },
+  { _id: false }
+);
+
 const OrderSchema = new Schema<IOrderDoc>(
   {
     orderNumber: { type: String, required: true, unique: true, index: true },
@@ -62,18 +92,7 @@ const OrderSchema = new Schema<IOrderDoc>(
       pincode: { type: String, required: true },
       country: { type: String, default: 'India' },
     },
-    items: [
-      {
-        productId: { type: String, required: true },
-        name: { type: String, required: true },
-        slug: { type: String, required: true },
-        image: { type: String, required: true },
-        price: { type: Number, required: true },
-        quantity: { type: Number, required: true, min: 1 },
-        size: { type: String },
-        color: { type: String },
-      },
-    ],
+    items: [OrderItemSchema],
     subtotal: { type: Number, required: true },
     discount: { type: Number, default: 0 },
     couponCode: { type: String },

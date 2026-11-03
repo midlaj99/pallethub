@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Category from '@/models/Category';
-import memoryStore from '@/lib/memoryStore';
-import { ICategory } from '@/types';
+import { uploadImageToCloudinary, deleteImageFromCloudinary } from '@/lib/cloudinary';
 
 export async function GET() {
   try {
     const db = await connectToDatabase();
     if (db) {
-      const categories = await Category.find({ isActive: true }).sort({ order: 1 }).lean();
-      if (categories.length > 0) {
-        return NextResponse.json({ success: true, categories });
-      }
+      const categories = await Category.find({ isActive: true }).sort({ order: 1, createdAt: 1 }).lean();
+      return NextResponse.json({ success: true, categories });
     }
 
     return NextResponse.json({
       success: true,
-      categories: memoryStore.categories,
+      categories: [],
     });
   } catch (error: unknown) {
     console.error('Error fetching categories:', error);
@@ -30,14 +27,19 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    if (!body.name) {
+    if (!body.name || !body.name.trim()) {
       return NextResponse.json(
         { success: false, error: 'Category name is required' },
         { status: 400 }
       );
     }
 
-    const slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const cleanName = body.name.trim();
+    const slug = (
+      body.slug ||
+      cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')
+    );
+
     let subcategories: string[] = [];
     if (Array.isArray(body.subcategories)) {
       subcategories = body.subcategories.map((s: string) => s.trim()).filter(Boolean);
@@ -45,23 +47,38 @@ export async function POST(req: NextRequest) {
       subcategories = body.subcategories.split(',').map((s: string) => s.trim()).filter(Boolean);
     }
 
-    const newCategory: ICategory = {
-      _id: `cat_${Date.now()}`,
-      name: body.name,
-      slug,
-      description: body.description || '',
-      image: body.image || '/images/categories/costume.png',
-      itemCount: 0,
-      isActive: true,
-      subcategories,
-    };
-
-    const db = await connectToDatabase();
-    if (db) {
-      await Category.create(newCategory);
+    let imageUrl = body.image || '';
+    if (typeof imageUrl === 'string' && imageUrl.startsWith('data:image/')) {
+      const uploadRes = await uploadImageToCloudinary(imageUrl, 'palettehubb/categories');
+      imageUrl = uploadRes.secure_url;
     }
 
-    memoryStore.categories.push(newCategory);
+    const db = await connectToDatabase();
+    if (!db) {
+      return NextResponse.json(
+        { success: false, error: 'Database service is currently unreachable' },
+        { status: 503 }
+      );
+    }
+
+    const existing = await Category.findOne({ slug });
+    if (existing) {
+      return NextResponse.json(
+        { success: false, error: 'A category with this name or slug already exists' },
+        { status: 400 }
+      );
+    }
+
+    const newCategory = await Category.create({
+      name: cleanName,
+      slug,
+      description: body.description ? body.description.trim() : '',
+      image: imageUrl,
+      itemCount: 0,
+      isActive: true,
+      order: body.order ? Number(body.order) : 0,
+      subcategories,
+    });
 
     return NextResponse.json({ success: true, category: newCategory }, { status: 201 });
   } catch (error: unknown) {
@@ -76,7 +93,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { slug, categoryName, newSubcategory, removeSubcategory, subcategories } = body;
+    const { slug, categoryName, newSubcategory, removeSubcategory, subcategories, name, description, image, isActive } = body;
 
     if (!slug && !categoryName) {
       return NextResponse.json(
@@ -86,63 +103,60 @@ export async function PATCH(req: NextRequest) {
     }
 
     const db = await connectToDatabase();
+    if (!db) {
+      return NextResponse.json({ success: false, error: 'Database unreachable' }, { status: 503 });
+    }
+
     const query = slug ? { slug } : { name: { $regex: new RegExp(`^${categoryName}$`, 'i') } };
 
-    if (db) {
-      if (newSubcategory && typeof newSubcategory === 'string') {
-        const trimmed = newSubcategory.trim();
-        if (trimmed) {
-          await Category.findOneAndUpdate(query, { $addToSet: { subcategories: trimmed } });
-        }
-      } else if (removeSubcategory && typeof removeSubcategory === 'string') {
-        await Category.findOneAndUpdate(query, { $pull: { subcategories: removeSubcategory } });
-      } else if (Array.isArray(subcategories)) {
-        await Category.findOneAndUpdate(query, { $set: { subcategories } });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updates: any = {};
+    if (name) updates.name = name.trim();
+    if (description !== undefined) updates.description = description.trim();
+    if (isActive !== undefined) updates.isActive = Boolean(isActive);
+
+    if (image) {
+      if (typeof image === 'string' && image.startsWith('data:image/')) {
+        const uploadRes = await uploadImageToCloudinary(image, 'palettehubb/categories');
+        updates.image = uploadRes.secure_url;
+      } else {
+        updates.image = image;
       }
     }
 
-    // Update memoryStore
-    const catIndex = memoryStore.categories.findIndex(
-      (c) =>
-        (slug && c.slug === slug) ||
-        (categoryName && c.name.toLowerCase() === categoryName.toLowerCase())
-    );
+    let updated = null;
 
-    if (catIndex !== -1) {
-      const targetCat = memoryStore.categories[catIndex];
-      const currentSubs = Array.isArray(targetCat.subcategories) ? [...targetCat.subcategories] : [];
-
-      if (newSubcategory && typeof newSubcategory === 'string') {
-        const trimmed = newSubcategory.trim();
-        if (trimmed && !currentSubs.includes(trimmed)) {
-          currentSubs.push(trimmed);
-        }
-      } else if (removeSubcategory && typeof removeSubcategory === 'string') {
-        const rIndex = currentSubs.indexOf(removeSubcategory);
-        if (rIndex !== -1) {
-          currentSubs.splice(rIndex, 1);
-        }
-      } else if (Array.isArray(subcategories)) {
-        currentSubs.length = 0;
-        currentSubs.push(...subcategories);
+    if (newSubcategory && typeof newSubcategory === 'string') {
+      const trimmed = newSubcategory.trim();
+      if (trimmed) {
+        updated = await Category.findOneAndUpdate(
+          query,
+          { $addToSet: { subcategories: trimmed }, $set: updates },
+          { new: true }
+        );
       }
-
-      memoryStore.categories[catIndex] = {
-        ...targetCat,
-        subcategories: currentSubs,
-      };
-
-      return NextResponse.json({
-        success: true,
-        category: memoryStore.categories[catIndex],
-      });
+    } else if (removeSubcategory && typeof removeSubcategory === 'string') {
+      updated = await Category.findOneAndUpdate(
+        query,
+        { $pull: { subcategories: removeSubcategory }, $set: updates },
+        { new: true }
+      );
+    } else if (Array.isArray(subcategories)) {
+      updates.subcategories = subcategories.map((s: string) => s.trim()).filter(Boolean);
+      updated = await Category.findOneAndUpdate(query, { $set: updates }, { new: true });
+    } else {
+      updated = await Category.findOneAndUpdate(query, { $set: updates }, { new: true });
     }
 
-    return NextResponse.json({ success: true, message: 'Category subcategories updated' });
+    if (!updated) {
+      return NextResponse.json({ success: false, error: 'Category not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, category: updated });
   } catch (error: unknown) {
-    console.error('Error updating category subcategories:', error);
+    console.error('Error updating category:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to update subcategory' },
+      { success: false, error: 'Failed to update category' },
       { status: 500 }
     );
   }
@@ -152,18 +166,29 @@ export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const slug = searchParams.get('slug');
-    if (!slug) {
-      return NextResponse.json({ success: false, error: 'Category slug is required' }, { status: 400 });
+    const id = searchParams.get('id');
+
+    if (!slug && !id) {
+      return NextResponse.json({ success: false, error: 'Slug or ID required' }, { status: 400 });
     }
 
     const db = await connectToDatabase();
-    if (db) {
-      await Category.findOneAndDelete({ slug });
+    if (!db) {
+      return NextResponse.json({ success: false, error: 'Database unreachable' }, { status: 503 });
     }
 
-    memoryStore.categories = memoryStore.categories.filter((c) => c.slug !== slug);
+    const query = id ? { _id: id } : { slug };
+    const category = await Category.findOneAndDelete(query).lean();
 
-    return NextResponse.json({ success: true, message: 'Category deleted' });
+    if (!category) {
+      return NextResponse.json({ success: false, error: 'Category not found' }, { status: 404 });
+    }
+
+    if (category.image && category.image.includes('cloudinary.com')) {
+      deleteImageFromCloudinary(category.image).catch(() => {});
+    }
+
+    return NextResponse.json({ success: true, message: 'Category deleted successfully' });
   } catch (error: unknown) {
     console.error('Error deleting category:', error);
     return NextResponse.json(

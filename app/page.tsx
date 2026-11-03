@@ -5,56 +5,76 @@ import CategoryGrid from '@/components/home/CategoryGrid';
 import FeaturedProducts from '@/components/home/FeaturedProducts';
 import PromoBanner from '@/components/home/PromoBanner';
 import TrustBenefits from '@/components/home/TrustBenefits';
-import memoryStore from '@/lib/memoryStore';
 import connectToDatabase from '@/lib/db';
 import Product from '@/models/Product';
-import { IProduct } from '@/types';
+import Category from '@/models/Category';
+import { IProduct, ICategory } from '@/types';
 
-async function getFeaturedProducts(): Promise<IProduct[]> {
+async function getHomePageData(): Promise<{
+  featuredProducts: IProduct[];
+  categories: ICategory[];
+}> {
   await connection();
+  let featuredProducts: IProduct[] = [];
+  let categories: ICategory[] = [];
+
   try {
     const db = await connectToDatabase();
     if (db) {
-      const prods = await Product.find({ isFeatured: true }).limit(5).lean();
-      if (prods.length > 0) {
-        return JSON.parse(JSON.stringify(prods));
+      const [prods, cats] = await Promise.all([
+        Product.find({ isFeatured: true, isAvailable: true }).limit(5).lean(),
+        Category.find({ isActive: true }).sort({ order: 1 }).lean(),
+      ]);
+
+      if (prods && prods.length > 0) {
+        featuredProducts = JSON.parse(JSON.stringify(prods));
+      }
+      if (cats && cats.length > 0) {
+        categories = JSON.parse(JSON.stringify(cats));
       }
     }
   } catch (e) {
-    console.error('Error fetching featured products for homepage', e);
+    console.error('Error fetching homepage data from DB:', e);
   }
-  return memoryStore.products.filter((p) => p.isFeatured).slice(0, 5);
+
+  return { featuredProducts, categories };
 }
 
-async function FeaturedProductsSection() {
-  const featuredProducts = await getFeaturedProducts();
-  return <FeaturedProducts initialProducts={featuredProducts} />;
-}
+async function HomeContent() {
+  const { featuredProducts, categories } = await getHomePageData();
 
-function FeaturedProductsFallback() {
-  const fallback = memoryStore.products.filter((p) => p.isFeatured).slice(0, 5);
-  return <FeaturedProducts initialProducts={fallback} />;
+  return (
+    <>
+      {/* 1. Hero Section */}
+      <HeroSection />
+
+      {/* 2. Shop By Category */}
+      <CategoryGrid initialCategories={categories} />
+
+      {/* 3. Featured Products */}
+      <FeaturedProducts initialProducts={featuredProducts} />
+
+      {/* 4. Promotional Banner */}
+      <PromoBanner />
+
+      {/* 5. Why Choose Us */}
+      <TrustBenefits />
+    </>
+  );
 }
 
 export default function HomePage() {
   return (
     <div className="w-full">
-      {/* 1. Hero Section matching original-db63c2b0d1ac5bdae882a2cc4b2643e4.webp */}
-      <HeroSection />
-
-      {/* 2. Shop By Category matching Palette Hubb Fashion Store Homepage.png */}
-      <CategoryGrid />
-
-      {/* 3. Featured Products Top Picks matching Palette Hubb Fashion Store Homepage.png */}
-      <Suspense fallback={<FeaturedProductsFallback />}>
-        <FeaturedProductsSection />
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#f7f5ee] flex items-center justify-center py-20">
+            <div className="w-10 h-10 border-4 border-black border-t-transparent rounded-full animate-spin" />
+          </div>
+        }
+      >
+        <HomeContent />
       </Suspense>
-
-      {/* 4. Promotional Banner Upgrade Your Style matching Palette Hubb Fashion Store Homepage.png */}
-      <PromoBanner />
-
-      {/* 5. Why Choose Us More Than Just Fashion matching Palette Hubb Fashion Store Homepage.png */}
-      <TrustBenefits />
     </div>
   );
 }

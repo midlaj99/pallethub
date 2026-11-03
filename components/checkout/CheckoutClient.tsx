@@ -137,6 +137,22 @@ export default function CheckoutClient() {
       }
 
       // Clear local cart and redirect to order confirmation
+      // Save order to device localStorage for private local tracking
+      try {
+        const existing = JSON.parse(localStorage.getItem('palette_device_orders') || '[]');
+        const updatedDeviceOrders = [
+          {
+            orderNumber: orderData.order.orderNumber,
+            date: new Date().toISOString(),
+            total: orderData.order.total,
+            itemsCount: orderData.order.items?.length || 1,
+          },
+          ...existing.filter((o: any) => o.orderNumber !== orderData.order.orderNumber),
+        ].slice(0, 10);
+        localStorage.setItem('palette_device_orders', JSON.stringify(updatedDeviceOrders));
+      } catch (e) {
+        // storage error
+      }
       clearCart();
       router.push(`/order-confirmation/${orderData.order.orderNumber}`);
     } catch (err: unknown) {
@@ -343,7 +359,7 @@ export default function CheckoutClient() {
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs sm:text-sm font-bold text-neutral-900">
-                        Instant Test Payment (Seamless Demo Evaluation)
+                        Online Test Payment (Pre-configured Evaluation)
                       </span>
                       <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
                         RECOMMENDED
@@ -465,7 +481,7 @@ export default function CheckoutClient() {
               <button
                 type="submit"
                 disabled={processing}
-                className="w-full bg-black text-white text-sm font-bold py-4 px-6 rounded-2xl flex items-center justify-center gap-2 hover:bg-neutral-800 transition-all shadow-xl active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+                className="w-full bg-[#985842] text-white text-sm font-bold py-4 px-6 rounded-2xl flex items-center justify-center gap-2 hover:bg-[#834633] transition-all shadow-lg active:scale-[0.99] disabled:opacity-60 cursor-pointer"
               >
                 {processing ? (
                   <>

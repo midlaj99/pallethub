@@ -6,7 +6,10 @@ export interface ICategory {
   image: string;
   itemCount?: number;
   isActive?: boolean;
+  order?: number;
   subcategories?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface IProduct {
@@ -27,11 +30,13 @@ export interface IProduct {
   };
   rating?: number;
   reviewsCount?: number;
+  salesCount?: number;
   isFeatured?: boolean;
   isAvailable?: boolean;
   supplierId?: string;
   tags?: string[];
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ICartItem {
@@ -45,6 +50,7 @@ export interface ICartItem {
   size?: string;
   color?: string;
   stock: number;
+  supplierId?: string;
 }
 
 export type OrderStatus =
@@ -68,6 +74,11 @@ export interface IOrderItem {
   quantity: number;
   size?: string;
   color?: string;
+  supplierId?: string;
+  supplierName?: string;
+  itemStatus?: 'Pending' | 'Processing' | 'Dispatched' | 'Delivered' | 'Cancelled';
+  trackingNumber?: string;
+  trackingCarrier?: string;
 }
 
 export interface IShippingAddress {
@@ -116,6 +127,7 @@ export interface ISupplier {
   notes?: string;
   isActive: boolean;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ICoupon {
@@ -126,12 +138,13 @@ export interface ICoupon {
   minOrderAmount?: number;
   isActive: boolean;
   expiresAt?: string;
+  timesUsed?: number;
 }
 
 export interface IUser {
   _id: string;
   name: string;
   email: string;
-  role: 'customer' | 'admin';
+  role: 'customer' | 'admin' | 'supplier';
   createdAt: string;
 }

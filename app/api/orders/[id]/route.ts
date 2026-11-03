@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Order from '@/models/Order';
-import memoryStore from '@/lib/memoryStore';
+import { notifyOrderUpdated } from '@/lib/realtime';
 
 export async function GET(
   req: NextRequest,
@@ -18,14 +18,6 @@ export async function GET(
       if (order) {
         return NextResponse.json({ success: true, order });
       }
-    }
-
-    const memoryOrder = memoryStore.orders.find(
-      (o) => o.orderNumber.toLowerCase() === id.toLowerCase() || o._id === id
-    );
-
-    if (memoryOrder) {
-      return NextResponse.json({ success: true, order: memoryOrder });
     }
 
     return NextResponse.json(
@@ -59,7 +51,7 @@ export async function PUT(
     ];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updates: any = { updatedAt: new Date().toISOString() };
+    const updates: any = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updates[field] = body[field];
@@ -68,26 +60,23 @@ export async function PUT(
 
     const db = await connectToDatabase();
     if (db) {
-      await Order.findOneAndUpdate(
+      const updated = await Order.findOneAndUpdate(
         { $or: [{ orderNumber: id }, { _id: id }] },
         { $set: updates },
         { new: true }
-      );
-    }
+      ).lean();
 
-    const index = memoryStore.orders.findIndex(
-      (o) => o.orderNumber === id || o._id === id
-    );
-    if (index !== -1) {
-      memoryStore.orders[index] = { ...memoryStore.orders[index], ...updates };
-      return NextResponse.json({
-        success: true,
-        order: memoryStore.orders[index],
-      });
+      if (updated) {
+        notifyOrderUpdated(updated);
+        return NextResponse.json({
+          success: true,
+          order: updated,
+        });
+      }
     }
 
     return NextResponse.json(
-      { success: false, error: 'Order not found' },
+      { success: false, error: 'Order not found or database unavailable' },
       { status: 404 }
     );
   } catch (error: unknown) {

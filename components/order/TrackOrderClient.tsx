@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Search, Truck, Clock, ShieldCheck, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
+import { Search, Truck, Clock, ShieldCheck, CheckCircle2, AlertCircle, ArrowRight, Package } from 'lucide-react';
 import { IOrder } from '@/types';
 
 export default function TrackOrderClient() {
@@ -15,6 +15,18 @@ export default function TrackOrderClient() {
   const [loading, setLoading] = useState(false);
   const [order, setOrder] = useState<IOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deviceOrders, setDeviceOrders] = useState<Array<{ orderNumber: string; total: number; date: string }>>([]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('palette_device_orders');
+      if (stored) {
+        setDeviceOrders(JSON.parse(stored));
+      }
+    } catch (e) {
+      // storage
+    }
+  }, []);
 
   const fetchOrder = async (query: string) => {
     if (!query.trim()) return;
@@ -58,7 +70,7 @@ export default function TrackOrderClient() {
             Real-Time Courier Tracking
           </span>
           <h1 className="text-2xl sm:text-4xl font-black text-neutral-900 tracking-tight mt-1 mb-3">
-            Track Your Dropship Order
+            Track Your Order
           </h1>
           <p className="text-xs sm:text-sm text-neutral-600 max-w-md mx-auto">
             Enter your Palette Hubb order number to view live supplier dispatch milestones and courier tracking.
@@ -74,7 +86,7 @@ export default function TrackOrderClient() {
                 type="text"
                 value={orderQuery}
                 onChange={(e) => setOrderQuery(e.target.value)}
-                placeholder="Enter Order ID (e.g. PH-98241)"
+                placeholder="Enter Order ID (e.g. PH-10294)"
                 className="w-full bg-neutral-50 border border-neutral-200 rounded-2xl py-3 pl-12 pr-4 text-xs sm:text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-black uppercase font-medium"
               />
             </div>
@@ -87,28 +99,34 @@ export default function TrackOrderClient() {
             </button>
           </form>
 
-          {/* Quick Demo Pre-fills */}
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
-            <span>Sample Orders:</span>
-            <button
-              onClick={() => {
-                setOrderQuery('PH-98241');
-                fetchOrder('PH-98241');
-              }}
-              className="text-neutral-800 hover:text-black font-semibold bg-neutral-100 px-2.5 py-1 rounded-lg"
-            >
-              PH-98241 (Ordered from Supplier)
-            </button>
-            <button
-              onClick={() => {
-                setOrderQuery('PH-98242');
-                fetchOrder('PH-98242');
-              }}
-              className="text-neutral-800 hover:text-black font-semibold bg-neutral-100 px-2.5 py-1 rounded-lg"
-            >
-              PH-98242 (Shipped via Delhivery)
-            </button>
-          </div>
+          {/* Orders Placed On This Device */}
+          {deviceOrders.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-neutral-100">
+              <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block mb-2.5">
+                Orders Placed On This Device:
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {deviceOrders.map((doItem) => (
+                  <button
+                    key={doItem.orderNumber}
+                    onClick={() => {
+                      setOrderQuery(doItem.orderNumber);
+                      fetchOrder(doItem.orderNumber);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#f7f5ee] hover:bg-neutral-200/80 border border-neutral-200 rounded-xl text-xs font-mono font-bold text-neutral-800 transition-colors cursor-pointer"
+                  >
+                    <Package className="w-3.5 h-3.5 text-neutral-500" />
+                    <span>{doItem.orderNumber}</span>
+                    {doItem.total && (
+                      <span className="text-[10px] text-neutral-500 font-sans font-medium">
+                        (₹{doItem.total})
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {error && (
@@ -121,7 +139,6 @@ export default function TrackOrderClient() {
         {/* Order Result Card */}
         {order && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-neutral-200/80 shadow-md space-y-8 animate-in fade-in duration-200">
-            
             {/* Header info */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-neutral-100 gap-4">
               <div>
@@ -132,11 +149,13 @@ export default function TrackOrderClient() {
                   </span>
                 </div>
                 <p className="text-xs text-neutral-500 mt-1">
-                  Placed on {new Date(order.createdAt).toLocaleDateString('en-IN', {
+                  Placed on{' '}
+                  {new Date(order.createdAt).toLocaleDateString('en-IN', {
                     day: 'numeric',
                     month: 'short',
                     year: 'numeric',
-                  })} • Recipient: {order.customer.fullName}
+                  })}{' '}
+                  • Recipient: {order.customer.fullName}
                 </p>
               </div>
 
@@ -159,7 +178,10 @@ export default function TrackOrderClient() {
                     {order.trackingCarrier || 'Bluedart Express Courier'}
                   </h4>
                   <p className="text-xs text-neutral-600 font-mono">
-                    AWB Tracking: <span className="font-bold text-black">{order.trackingNumber || 'Pending Dispatch Label'}</span>
+                    AWB Tracking:{' '}
+                    <span className="font-bold text-black">
+                      {order.trackingNumber || 'Pending Dispatch Label'}
+                    </span>
                   </p>
                 </div>
               </div>
@@ -169,9 +191,7 @@ export default function TrackOrderClient() {
                   <span className="text-[11px] text-neutral-500 uppercase tracking-wider block">
                     Supplier Fulfillment Ref
                   </span>
-                  <span className="text-xs font-bold text-neutral-800">
-                    {order.supplierOrderRef}
-                  </span>
+                  <span className="text-xs font-bold text-neutral-800">{order.supplierOrderRef}</span>
                 </div>
               )}
             </div>
@@ -182,9 +202,9 @@ export default function TrackOrderClient() {
                 Products in this shipment
               </h3>
               <div className="space-y-3">
-                {order.items.map((item) => (
+                {order.items.map((item, idx) => (
                   <div
-                    key={item.productId}
+                    key={idx}
                     className="flex items-center justify-between p-3 rounded-2xl bg-neutral-50 border border-neutral-100"
                   >
                     <div className="flex items-center gap-3">
@@ -223,10 +243,8 @@ export default function TrackOrderClient() {
                 {order.customer.pincode}
               </p>
             </div>
-
           </div>
         )}
-
       </div>
     </div>
   );

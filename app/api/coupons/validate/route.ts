@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Coupon from '@/models/Coupon';
-import memoryStore from '@/lib/memoryStore';
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,20 +16,24 @@ export async function POST(req: NextRequest) {
     const cleanCode = code.trim().toUpperCase();
     const orderSubtotal = Number(subtotal) || 0;
 
-    let coupon = null;
     const db = await connectToDatabase();
-    if (db) {
-      coupon = await Coupon.findOne({ code: cleanCode, isActive: true }).lean();
+    if (!db) {
+      return NextResponse.json({ success: false, error: 'Database service unreachable' }, { status: 503 });
     }
 
-    if (!coupon) {
-      coupon = memoryStore.coupons.find((c) => c.code === cleanCode && c.isActive);
-    }
+    const coupon = await Coupon.findOne({ code: cleanCode, isActive: true }).lean();
 
     if (!coupon) {
       return NextResponse.json(
-        { success: false, error: 'Invalid or expired coupon code' },
+        { success: false, error: 'Invalid or inactive coupon code' },
         { status: 404 }
+      );
+    }
+
+    if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
+      return NextResponse.json(
+        { success: false, error: 'This coupon has expired' },
+        { status: 400 }
       );
     }
 
@@ -38,7 +41,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: `Minimum order amount for this coupon is ₹${coupon.minOrderAmount}`,
+          error: `Minimum order amount for coupon ${coupon.code} is ₹${coupon.minOrderAmount}`,
         },
         { status: 400 }
       );

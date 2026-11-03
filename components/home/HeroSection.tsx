@@ -80,7 +80,7 @@ export default function HeroSection() {
           ))}
 
           {/* Foreground Editorial Content */}
-          <div className="relative z-10 w-full px-6 sm:px-10 md:px-14 lg:px-16 py-12 flex flex-col justify-between h-full">
+          <div className="relative z-10 w-full px-5 sm:px-10 md:px-14 lg:px-16 py-8 sm:py-12 flex flex-col justify-between h-full">
             <div className="max-w-lg lg:max-w-xl">
               {/* Category / Subtitle Badge */}
               <div className="inline-flex items-center gap-2 mb-4">
@@ -91,7 +91,7 @@ export default function HeroSection() {
               </div>
 
               {/* Bold Editorial Headline */}
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[54px] font-bold text-white tracking-tight leading-[1.12] mb-5">
+              <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-[54px] font-bold text-white tracking-tight leading-[1.12] mb-5">
                 {SLIDES[currentSlide].headline}
               </h1>
 

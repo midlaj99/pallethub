@@ -31,8 +31,11 @@ import {
   Sparkles,
   ArrowUpRight,
   Filter,
+  Lock,
+  Bell,
 } from 'lucide-react';
 import { IOrder, IProduct, ISupplier, ICategory, ICoupon, OrderStatus } from '@/types';
+import { requestNotificationPermission, showDeviceNotification, playOrderChime } from '@/lib/clientNotification';
 
 type AdminTab =
   | 'inventory'
@@ -112,6 +115,9 @@ export default function AdminDashboardClient() {
   const [newSupPhone, setNewSupPhone] = useState('');
   const [newSupLeadTime, setNewSupLeadTime] = useState('3');
   const [newSupNotes, setNewSupNotes] = useState('');
+  const [newSupPassword, setNewSupPassword] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [notifGranted, setNotifGranted] = useState(false);
   const [savingSupplier, setSavingSupplier] = useState(false);
 
   // Coupon modal state
@@ -169,6 +175,60 @@ export default function AdminDashboardClient() {
     fetchAdminData();
   }, []);
 
+  // Check notification permission on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifGranted(Notification.permission === 'granted');
+    }
+  }, []);
+
+  const handleToggleNotifications = async () => {
+    const granted = await requestNotificationPermission();
+    setNotifGranted(granted);
+    if (granted) {
+      showDeviceNotification(
+        'Admin Notifications Enabled!',
+        'You will receive instant alerts on this device whenever a customer places an order.',
+        '/admin'
+      );
+    }
+  };
+
+  // Real-time EventSource listener for instant orders
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/events/orders');
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'NEW_ORDER' && payload.order) {
+            const newOrd: IOrder = payload.order;
+            setOrders((prev) => [newOrd, ...prev.filter((o) => o._id !== newOrd._id)]);
+            showDeviceNotification(
+              `🔔 New Order Received #${newOrd.orderNumber}`,
+              `Customer: ${newOrd.customer.fullName} — Amount: ₹${newOrd.total.toLocaleString('en-IN')}`,
+              '/admin'
+            );
+            showToast(`New order ${newOrd.orderNumber} placed by ${newOrd.customer.fullName}!`);
+            fetchAdminData();
+          } else if (payload.type === 'ORDER_UPDATED' && payload.order) {
+            const updated: IOrder = payload.order;
+            setOrders((prev) =>
+              prev.map((o) => (o._id === updated._id || o.orderNumber === updated.orderNumber ? updated : o))
+            );
+          }
+        } catch (e) {}
+      };
+    } catch (e) {
+      console.warn('Real-time connection error:', e);
+    }
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, []);
+
   // Compute stock alert metrics
   const outOfStockProducts = products.filter((p) => p.stock <= 0);
   const lowStockProducts = products.filter((p) => p.stock > 0 && p.stock <= LOW_STOCK_THRESHOLD);
@@ -179,39 +239,65 @@ export default function AdminDashboardClient() {
   );
   const totalAlertCount = totalStockAlerts + pendingFulfillmentOrders.length;
 
-  // Handle Image File Upload from Device
-  const handleDeviceImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Image File Upload directly to Cloudinary
+  const handleDeviceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file) => {
+    setUploadingImage(true);
+    for (const file of Array.from(files)) {
       if (!file.type.startsWith('image/')) {
         alert('Please select an image file (PNG, JPG, WEBP).');
-        return;
+        continue;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          setProductImages((prev) => [...prev, reader.result as string]);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('folder', 'palettehubb/products');
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (data.success && data.url) {
+          setProductImages((prev) => [...prev, data.url]);
+          showToast('Image uploaded to Cloudinary CDN!');
+        } else {
+          alert(data.error || 'Cloudinary upload failed');
         }
-      };
-      reader.readAsDataURL(file);
-    });
-
+      } catch (err) {
+        alert('Error uploading image to Cloudinary');
+      }
+    }
+    setUploadingImage(false);
     if (e.target) e.target.value = '';
   };
 
-  // Handle Category Image Device Upload
-  const handleCatImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Category Image Device Upload directly to Cloudinary
+  const handleCatImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        setNewCatImage(reader.result);
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('folder', 'palettehubb/categories');
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        setNewCatImage(data.url);
+        showToast('Category image uploaded to Cloudinary CDN!');
+      } else {
+        alert(data.error || 'Failed to upload category image');
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      alert('Error uploading category image to Cloudinary');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   // Add Image URL to Product Images list
@@ -565,6 +651,7 @@ export default function AdminDashboardClient() {
           email: newSupEmail,
           phone: newSupPhone,
           leadTimeDays: Number(newSupLeadTime) || 3,
+          password: newSupPassword || 'Supplier@123',
           notes: newSupNotes,
         }),
       });
@@ -577,6 +664,7 @@ export default function AdminDashboardClient() {
         setNewSupEmail('');
         setNewSupPhone('');
         setNewSupNotes('');
+        setNewSupPassword('');
         fetchAdminData();
       }
     } catch (err) {
@@ -678,8 +766,8 @@ export default function AdminDashboardClient() {
   });
 
   return (
-    <div className="bg-[#f7f5ee] min-h-screen py-8 sm:py-12 select-none">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="bg-[#f7f5ee] min-h-screen py-5 sm:py-12 select-none">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         
         {/* Toast Notification */}
         {toastMessage && (
@@ -690,9 +778,9 @@ export default function AdminDashboardClient() {
         )}
 
         {/* Top Header Card */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-neutral-200/80 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 border border-neutral-200/80 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-1.5">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md">
                 Admin Control Center
@@ -712,25 +800,25 @@ export default function AdminDashboardClient() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={fetchAdminData}
               disabled={loading}
-              className="inline-flex items-center gap-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold px-3.5 py-2.5 rounded-xl transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
             </button>
             <button
               onClick={handleOpenAddProduct}
-              className="inline-flex items-center gap-2 bg-black hover:bg-neutral-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors shadow-sm cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 bg-black hover:bg-neutral-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors shadow-sm cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Add Product</span>
             </button>
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 text-neutral-800 text-xs font-semibold px-3.5 py-2.5 rounded-xl transition-colors"
+              className="inline-flex items-center justify-center gap-1.5 bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 text-neutral-800 text-xs font-semibold px-3.5 py-2.5 rounded-xl transition-colors"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span>Storefront</span>
@@ -739,7 +827,7 @@ export default function AdminDashboardClient() {
         </div>
 
         {/* 7 Requested Navigation Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-6 scrollbar-none border-b border-neutral-200">
+        <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-6 scrollbar-none border-b border-neutral-200 touch-pan-x [-webkit-overflow-scrolling:touch]">
           {/* 1. Inventory */}
           <button
             onClick={() => setActiveTab('inventory')}
@@ -901,9 +989,9 @@ export default function AdminDashboardClient() {
             )}
 
             {/* Inventory Controls Bar */}
-            <div className="bg-white rounded-3xl p-6 border border-neutral-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-neutral-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               {/* Search Bar */}
-              <div className="relative flex-1 max-w-md">
+              <div className="relative flex-1 max-w-md w-full">
                 <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-3 pointer-events-none" />
                 <input
                   type="text"
@@ -961,9 +1049,9 @@ export default function AdminDashboardClient() {
             </div>
 
             {/* Inventory Table */}
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-neutral-200/80 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+            <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 border border-neutral-200/80 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto touch-pan-x [-webkit-overflow-scrolling:touch]">
+                <table className="w-full text-left text-xs min-w-[720px]">
                   <thead>
                     <tr className="border-b border-neutral-200 text-neutral-400 uppercase font-semibold">
                       <th className="pb-3">Product</th>
@@ -1108,8 +1196,8 @@ export default function AdminDashboardClient() {
         {activeTab === 'orders' && (
           <div className="space-y-6 animate-in fade-in duration-200">
             {/* Orders Header & Filter */}
-            <div className="bg-white rounded-3xl p-6 border border-neutral-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="relative flex-1 max-w-md">
+            <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-neutral-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="relative flex-1 max-w-md w-full">
                 <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-3 pointer-events-none" />
                 <input
                   type="text"
@@ -1120,12 +1208,12 @@ export default function AdminDashboardClient() {
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <Filter className="w-3.5 h-3.5 text-neutral-400" />
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Filter className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
                 <select
                   value={orderStatusFilter}
                   onChange={(e) => setOrderStatusFilter(e.target.value)}
-                  className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs font-semibold cursor-pointer"
+                  className="w-full sm:w-auto bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs font-semibold cursor-pointer"
                 >
                   <option value="all">All Statuses ({orders.length})</option>
                   <option value="Paid">Paid / Pending Routing</option>
@@ -1138,9 +1226,9 @@ export default function AdminDashboardClient() {
             </div>
 
             {/* Orders Table */}
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-neutral-200/80 shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+            <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 border border-neutral-200/80 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto touch-pan-x [-webkit-overflow-scrolling:touch]">
+                <table className="w-full text-left text-xs min-w-[850px]">
                   <thead>
                     <tr className="border-b border-neutral-200 text-neutral-400 uppercase font-semibold">
                       <th className="pb-3">Order Number</th>
@@ -1445,9 +1533,9 @@ export default function AdminDashboardClient() {
               </p>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-neutral-200/80 shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+            <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 border border-neutral-200/80 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto touch-pan-x [-webkit-overflow-scrolling:touch]">
+                <table className="w-full text-left text-xs min-w-[720px]">
                   <thead>
                     <tr className="border-b border-neutral-200 text-neutral-400 uppercase font-semibold">
                       <th className="pb-3">Product</th>
@@ -1855,12 +1943,12 @@ export default function AdminDashboardClient() {
         {/* ADD / EDIT PRODUCT MODAL (Supports URL & Device Upload) */}
         {/* ---------------------------------------------------- */}
         {productModalOpen && (
-          <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 overflow-y-auto flex sm:items-center justify-center p-3 sm:p-4">
             <div
               className="fixed inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setProductModalOpen(false)}
             />
-            <div className="relative bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-neutral-200 my-8 space-y-5 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full p-4 sm:p-8 shadow-2xl border border-neutral-200 my-auto sm:my-8 space-y-4 sm:space-y-5 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
                 <div className="flex items-center gap-2">
                   <Package className="w-5 h-5 text-neutral-900" />
@@ -2030,12 +2118,12 @@ export default function AdminDashboardClient() {
 
                 {/* PRODUCT PHOTO: URL VS PHOTO UPLOAD FROM DEVICE */}
                 <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <label className="font-bold uppercase text-[11px] text-neutral-800">
                       Product Photos & Gallery *
                     </label>
                     {/* Mode Toggle: Upload from Device vs URL */}
-                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-neutral-200">
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-neutral-200 self-start sm:self-auto">
                       <button
                         type="button"
                         onClick={() => setImageInputMode('upload')}
@@ -2198,12 +2286,12 @@ export default function AdminDashboardClient() {
         {/* ORDER UPDATE MODAL */}
         {/* ---------------------------------------------------- */}
         {selectedOrder && (
-          <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 overflow-y-auto flex sm:items-center justify-center p-3 sm:p-4">
             <div
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setSelectedOrder(null)}
             />
-            <div className="relative bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-neutral-200 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-5 sm:p-8 shadow-2xl border border-neutral-200 space-y-4 sm:space-y-5 animate-in zoom-in-95 duration-200 my-auto max-h-[92vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
                 <h3 className="font-bold text-base text-neutral-900">
                   Fulfill Order #{selectedOrder.orderNumber}
@@ -2294,9 +2382,9 @@ export default function AdminDashboardClient() {
         {/* ADD CATEGORY MODAL */}
         {/* ---------------------------------------------------- */}
         {catModalOpen && (
-          <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCatModalOpen(false)} />
-            <div className="relative bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-neutral-200 space-y-4 animate-in zoom-in-95 duration-200">
+          <div className="fixed inset-0 z-50 overflow-y-auto flex sm:items-center justify-center p-3 sm:p-4">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCatModalOpen(false)} />
+            <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-neutral-200 space-y-4 animate-in zoom-in-95 duration-200 my-auto max-h-[92vh] overflow-y-auto">
               <h3 className="font-bold text-base text-neutral-900">Add New Category</h3>
               <form onSubmit={handleCreateCategory} className="space-y-3 text-xs">
                 <div>
@@ -2389,9 +2477,9 @@ export default function AdminDashboardClient() {
         {/* ADD SUPPLIER MODAL */}
         {/* ---------------------------------------------------- */}
         {supModalOpen && (
-          <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSupModalOpen(false)} />
-            <div className="relative bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-neutral-200 space-y-4 animate-in zoom-in-95 duration-200">
+          <div className="fixed inset-0 z-50 overflow-y-auto flex sm:items-center justify-center p-3 sm:p-4">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSupModalOpen(false)} />
+            <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-neutral-200 space-y-4 animate-in zoom-in-95 duration-200 my-auto max-h-[92vh] overflow-y-auto">
               <h3 className="font-bold text-base text-neutral-900">Add Dropship Supplier Partner</h3>
               <form onSubmit={handleCreateSupplier} className="space-y-3 text-xs">
                 <div>
@@ -2449,6 +2537,21 @@ export default function AdminDashboardClient() {
                   />
                 </div>
                 <div>
+                  <label className="block font-bold uppercase mb-1 text-xs">Supplier Login Password *</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={newSupPassword}
+                    onChange={(e) => setNewSupPassword(e.target.value)}
+                    placeholder="Dashboard password (min 6 chars)"
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-black"
+                  />
+                  <span className="text-[10px] text-neutral-400 mt-1 block">
+                    Supplier will use this email and password to log in at /supplier-dashboard
+                  </span>
+                </div>
+                <div>
                   <label className="block font-bold uppercase mb-1">Manufacturing Notes</label>
                   <input
                     type="text"
@@ -2475,9 +2578,9 @@ export default function AdminDashboardClient() {
         {/* CREATE COUPON / OFFER MODAL */}
         {/* ---------------------------------------------------- */}
         {couponModalOpen && (
-          <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCouponModalOpen(false)} />
-            <div className="relative bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-neutral-200 space-y-4 animate-in zoom-in-95 duration-200">
+          <div className="fixed inset-0 z-50 overflow-y-auto flex sm:items-center justify-center p-3 sm:p-4">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCouponModalOpen(false)} />
+            <div className="relative bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-neutral-200 space-y-4 animate-in zoom-in-95 duration-200 my-auto max-h-[92vh] overflow-y-auto">
               <h3 className="font-bold text-base text-neutral-900">Create New Offer Coupon</h3>
               <form onSubmit={handleCreateCoupon} className="space-y-3 text-xs">
                 <div>

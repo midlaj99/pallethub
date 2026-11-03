@@ -53,7 +53,7 @@ export default function CartDrawer() {
         onClick={() => setIsOpen(false)}
       />
 
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10">
         <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between">
           
           {/* Header */}
@@ -87,7 +87,7 @@ export default function CartDrawer() {
                 </p>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="bg-black text-white text-xs font-semibold px-6 py-2.5 rounded-full hover:bg-neutral-800 transition-colors"
+                  className="bg-[#985842] text-white text-xs font-semibold px-6 py-2.5 rounded-full hover:bg-[#834633] transition-colors"
                 >
                   Start Shopping
                 </button>
@@ -261,7 +261,7 @@ export default function CartDrawer() {
               <Link
                 href="/checkout"
                 onClick={() => setIsOpen(false)}
-                className="w-full bg-black text-white text-sm font-bold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 hover:bg-neutral-800 transition-colors shadow-lg active:scale-[0.99]"
+                className="w-full bg-[#985842] text-white text-sm font-bold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 hover:bg-[#834633] transition-colors shadow-md active:scale-[0.99]"
               >
                 <span>Proceed to Checkout</span>
                 <ArrowRight className="w-4 h-4" />

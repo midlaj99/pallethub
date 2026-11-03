@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Coupon from '@/models/Coupon';
-import memoryStore from '@/lib/memoryStore';
-import { ICoupon } from '@/types';
 
 export async function GET() {
   try {
     const db = await connectToDatabase();
     if (db) {
       const coupons = await Coupon.find().sort({ createdAt: -1 }).lean();
-      if (coupons.length > 0) {
-        return NextResponse.json({ success: true, coupons });
-      }
+      return NextResponse.json({ success: true, coupons });
     }
 
-    return NextResponse.json({ success: true, coupons: memoryStore.coupons });
+    return NextResponse.json({ success: true, coupons: [] });
   } catch (error: unknown) {
     console.error('Error fetching coupons:', error);
     return NextResponse.json(
@@ -35,33 +31,27 @@ export async function POST(req: NextRequest) {
     }
 
     const code = String(body.code).trim().toUpperCase();
-    const newCoupon: ICoupon = {
-      _id: `coup_${Date.now()}`,
+    const db = await connectToDatabase();
+    if (!db) {
+      return NextResponse.json({ success: false, error: 'Database service unreachable' }, { status: 503 });
+    }
+
+    const couponData = {
       code,
       discountType: body.discountType === 'fixed' ? 'fixed' : 'percentage',
       value: Number(body.value),
       minOrderAmount: Number(body.minOrderAmount) || 0,
       isActive: body.isActive !== false,
-      expiresAt: body.expiresAt || undefined,
+      expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
     };
 
-    const db = await connectToDatabase();
-    if (db) {
-      await Coupon.findOneAndUpdate(
-        { code },
-        { $set: newCoupon },
-        { upsert: true, new: true }
-      );
-    }
+    const coupon = await Coupon.findOneAndUpdate(
+      { code },
+      { $set: couponData },
+      { upsert: true, new: true }
+    ).lean();
 
-    const existingIdx = memoryStore.coupons.findIndex((c) => c.code === code);
-    if (existingIdx !== -1) {
-      memoryStore.coupons[existingIdx] = newCoupon;
-    } else {
-      memoryStore.coupons.unshift(newCoupon);
-    }
-
-    return NextResponse.json({ success: true, coupon: newCoupon }, { status: 201 });
+    return NextResponse.json({ success: true, coupon }, { status: 201 });
   } catch (error: unknown) {
     console.error('Error creating coupon:', error);
     return NextResponse.json(
@@ -80,16 +70,16 @@ export async function PUT(req: NextRequest) {
 
     const code = String(body.code).trim().toUpperCase();
     const db = await connectToDatabase();
-    if (db) {
-      await Coupon.findOneAndUpdate({ code }, { $set: body }, { new: true });
+    if (!db) {
+      return NextResponse.json({ success: false, error: 'Database service unreachable' }, { status: 503 });
     }
 
-    const idx = memoryStore.coupons.findIndex((c) => c.code === code);
-    if (idx !== -1) {
-      memoryStore.coupons[idx] = { ...memoryStore.coupons[idx], ...body };
+    const coupon = await Coupon.findOneAndUpdate({ code }, { $set: body }, { new: true }).lean();
+    if (!coupon) {
+      return NextResponse.json({ success: false, error: 'Coupon not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, coupon: memoryStore.coupons[idx] || body });
+    return NextResponse.json({ success: true, coupon });
   } catch (error: unknown) {
     console.error('Error updating coupon:', error);
     return NextResponse.json(
@@ -112,9 +102,7 @@ export async function DELETE(req: NextRequest) {
       await Coupon.findOneAndDelete({ code });
     }
 
-    memoryStore.coupons = memoryStore.coupons.filter((c) => c.code !== code);
-
-    return NextResponse.json({ success: true, message: 'Coupon deleted' });
+    return NextResponse.json({ success: true, message: 'Coupon deleted successfully' });
   } catch (error: unknown) {
     console.error('Error deleting coupon:', error);
     return NextResponse.json(

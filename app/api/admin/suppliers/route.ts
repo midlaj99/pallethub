@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Supplier from '@/models/Supplier';
-import memoryStore from '@/lib/memoryStore';
-import { ISupplier } from '@/types';
+import { hashPassword } from '@/lib/auth';
 
 export async function GET() {
   try {
     const db = await connectToDatabase();
     if (db) {
-      const suppliers = await Supplier.find().lean();
-      if (suppliers.length > 0) {
-        return NextResponse.json({ success: true, suppliers });
-      }
+      const suppliers = await Supplier.find().select('-passwordHash').sort({ createdAt: -1 }).lean();
+      return NextResponse.json({ success: true, suppliers });
     }
 
     return NextResponse.json({
       success: true,
-      suppliers: memoryStore.suppliers,
+      suppliers: [],
     });
   } catch (error: unknown) {
     console.error('Error fetching suppliers:', error);
@@ -38,26 +35,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const newSupplier: ISupplier = {
-      _id: `sup_${Date.now()}`,
-      name: body.name,
-      contactName: body.contactName || body.name,
-      email: body.email,
-      phone: body.phone,
-      website: body.website || '',
-      leadTimeDays: Number(body.leadTimeDays) || 3,
-      notes: body.notes || '',
-      isActive: true,
-    };
-
-    const db = await connectToDatabase();
-    if (db) {
-      await Supplier.create(newSupplier);
+    const plainPassword = body.password ? body.password.trim() : 'Supplier@123';
+    if (plainPassword.length < 6) {
+      return NextResponse.json(
+        { success: false, error: 'Supplier password must be at least 6 characters' },
+        { status: 400 }
+      );
     }
 
-    memoryStore.suppliers.push(newSupplier);
+    const passwordHash = await hashPassword(plainPassword);
+    const cleanEmail = body.email.trim().toLowerCase();
 
-    return NextResponse.json({ success: true, supplier: newSupplier }, { status: 201 });
+    const db = await connectToDatabase();
+    if (!db) {
+      return NextResponse.json(
+        { success: false, error: 'Database service is currently unreachable' },
+        { status: 503 }
+      );
+    }
+
+    const existing = await Supplier.findOne({ email: cleanEmail });
+    if (existing) {
+      return NextResponse.json(
+        { success: false, error: 'A supplier with this email already exists' },
+        { status: 400 }
+      );
+    }
+
+    const created = await Supplier.create({
+      name: body.name.trim(),
+      contactName: body.contactName ? body.contactName.trim() : body.name.trim(),
+      email: cleanEmail,
+      passwordHash,
+      phone: body.phone.trim(),
+      website: body.website ? body.website.trim() : '',
+      leadTimeDays: Number(body.leadTimeDays) || 3,
+      notes: body.notes ? body.notes.trim() : '',
+      isActive: true,
+    });
+
+    const supplierData = created.toObject();
+    delete supplierData.passwordHash;
+
+    return NextResponse.json({ success: true, supplier: supplierData }, { status: 201 });
   } catch (error: unknown) {
     console.error('Error creating supplier:', error);
     return NextResponse.json(
@@ -80,9 +100,7 @@ export async function DELETE(req: NextRequest) {
       await Supplier.findOneAndDelete({ _id: id });
     }
 
-    memoryStore.suppliers = memoryStore.suppliers.filter((s) => s._id !== id);
-
-    return NextResponse.json({ success: true, message: 'Supplier deleted' });
+    return NextResponse.json({ success: true, message: 'Supplier deleted successfully' });
   } catch (error: unknown) {
     console.error('Error deleting supplier:', error);
     return NextResponse.json(

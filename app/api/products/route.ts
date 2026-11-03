@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Product from '@/models/Product';
-import memoryStore from '@/lib/memoryStore';
-import { IProduct } from '@/types';
+import { uploadImageToCloudinary } from '@/lib/cloudinary';
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,111 +13,70 @@ export async function GET(req: NextRequest) {
     const maxPrice = searchParams.get('maxPrice') ? Number(searchParams.get('maxPrice')) : null;
     const sort = searchParams.get('sort') || 'featured';
     const featured = searchParams.get('featured');
+    const offers = searchParams.get('offers');
+    const bestSeller = searchParams.get('bestseller');
+    const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit')) || 50));
+    const page = Math.max(1, Number(searchParams.get('page')) || 1);
 
     const db = await connectToDatabase();
-
-    if (db) {
-      // Build MongoDB query
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const query: any = {};
-
-      if (category && category !== 'all') {
-        query.category = { $regex: new RegExp(`^${category}$`, 'i') };
-      }
-
-      if (subcategory && subcategory !== 'all') {
-        query.subcategory = { $regex: new RegExp(`^${subcategory}$`, 'i') };
-      }
-
-      if (search) {
-        query.$or = [
-          { name: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } },
-          { tags: { $in: [new RegExp(search, 'i')] } },
-        ];
-      }
-
-      if (featured === 'true') {
-        query.isFeatured = true;
-      }
-
-      if (minPrice !== null || maxPrice !== null) {
-        query.price = {};
-        if (minPrice !== null) query.price.$gte = minPrice;
-        if (maxPrice !== null) query.price.$lte = maxPrice;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let sortOpt: any = { createdAt: -1 };
-      if (sort === 'price-asc') sortOpt = { price: 1 };
-      if (sort === 'price-desc') sortOpt = { price: -1 };
-      if (sort === 'rating') sortOpt = { rating: -1 };
-      if (sort === 'featured') sortOpt = { isFeatured: -1, createdAt: -1 };
-
-      const products = await Product.find(query).sort(sortOpt).lean();
-
-      if (products.length > 0) {
-        return NextResponse.json({ success: true, count: products.length, products });
-      }
+    if (!db) {
+      return NextResponse.json({ success: true, count: 0, products: [] });
     }
 
-    // Resilient fallback to memory store
-    let filtered = [...memoryStore.products];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const query: any = { isAvailable: true };
 
     if (category && category !== 'all') {
-      const catLower = category.toLowerCase();
-      filtered = filtered.filter(
-        (p) =>
-          p.category.toLowerCase() === catLower ||
-          p.category.toLowerCase().includes(catLower)
-      );
+      query.category = { $regex: new RegExp(`^${category}$`, 'i') };
     }
 
     if (subcategory && subcategory !== 'all') {
-      const subLower = subcategory.toLowerCase();
-      filtered = filtered.filter(
-        (p) =>
-          p.subcategory &&
-          (p.subcategory.toLowerCase() === subLower ||
-           p.subcategory.toLowerCase().includes(subLower))
-      );
+      query.subcategory = { $regex: new RegExp(`^${subcategory}$`, 'i') };
     }
 
-    if (search) {
-      const s = search.toLowerCase();
-      filtered = filtered.filter(
-        (p) =>
-          p.name.toLowerCase().includes(s) ||
-          p.description.toLowerCase().includes(s) ||
-          p.tags?.some((t) => t.toLowerCase().includes(s))
-      );
+    if (search && search.trim()) {
+      const s = search.trim();
+      query.$or = [
+        { name: { $regex: s, $options: 'i' } },
+        { description: { $regex: s, $options: 'i' } },
+        { tags: { $in: [new RegExp(s, 'i')] } },
+      ];
     }
 
     if (featured === 'true') {
-      filtered = filtered.filter((p) => p.isFeatured);
+      query.isFeatured = true;
     }
 
-    if (minPrice !== null) {
-      filtered = filtered.filter((p) => p.price >= minPrice);
-    }
-    if (maxPrice !== null) {
-      filtered = filtered.filter((p) => p.price <= maxPrice);
+    if (offers === 'true') {
+      query.$or = [{ discountPercent: { $gt: 0 } }, { originalPrice: { $gt: 0 } }];
     }
 
-    if (sort === 'price-asc') {
-      filtered.sort((a, b) => a.price - b.price);
-    } else if (sort === 'price-desc') {
-      filtered.sort((a, b) => b.price - a.price);
-    } else if (sort === 'rating') {
-      filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-    } else {
-      filtered.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+    if (minPrice !== null || maxPrice !== null) {
+      query.price = {};
+      if (minPrice !== null) query.price.$gte = minPrice;
+      if (maxPrice !== null) query.price.$lte = maxPrice;
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let sortOpt: any = { createdAt: -1 };
+    if (sort === 'price-asc') sortOpt = { price: 1 };
+    if (sort === 'price-desc') sortOpt = { price: -1 };
+    if (sort === 'rating') sortOpt = { rating: -1 };
+    if (sort === 'best-seller' || bestSeller === 'true') sortOpt = { salesCount: -1, rating: -1 };
+    if (sort === 'featured') sortOpt = { isFeatured: -1, createdAt: -1 };
+
+    const skip = (page - 1) * limit;
+    const [products, total] = await Promise.all([
+      Product.find(query).sort(sortOpt).skip(skip).limit(limit).lean(),
+      Product.countDocuments(query),
+    ]);
 
     return NextResponse.json({
       success: true,
-      count: filtered.length,
-      products: filtered,
+      count: products.length,
+      total,
+      page,
+      products,
     });
   } catch (error: unknown) {
     console.error('Error fetching products:', error);
@@ -133,45 +91,74 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    if (!body.name || !body.price || !body.category) {
+    if (!body.name || body.price === undefined || !body.category) {
       return NextResponse.json(
-        { success: false, error: 'Name, price, and category are required' },
+        { success: false, error: 'Product name, price, and category are required' },
         { status: 400 }
       );
     }
 
-    const slug = body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-    const newProduct: IProduct = {
-      _id: `prod_${Date.now()}`,
-      name: body.name,
-      slug,
-      description: body.description || '',
-      category: body.category,
-      subcategory: body.subcategory || '',
-      price: Number(body.price),
-      originalPrice: body.originalPrice ? Number(body.originalPrice) : undefined,
-      discountPercent: body.originalPrice && body.originalPrice > body.price
-        ? Math.round(((body.originalPrice - body.price) / body.originalPrice) * 100)
-        : 0,
-      images: Array.isArray(body.images) && body.images.length > 0
-        ? body.images
-        : ['/images/products/oversized-tshirt.png'],
-      stock: body.stock ? Number(body.stock) : 10,
-      variants: body.variants || { sizes: ['S', 'M', 'L', 'XL'], colors: ['Black'] },
-      rating: 5.0,
-      reviewsCount: 1,
-      isFeatured: Boolean(body.isFeatured),
-      isAvailable: body.isAvailable !== false,
-      supplierId: body.supplierId || 'sup_1',
-      tags: body.tags || [],
-    };
-
-    const db = await connectToDatabase();
-    if (db) {
-      await Product.create(newProduct);
+    const price = Number(body.price);
+    const originalPrice = body.originalPrice ? Number(body.originalPrice) : undefined;
+    let discountPercent = 0;
+    if (originalPrice && originalPrice > price) {
+      discountPercent = Math.round(((originalPrice - price) / originalPrice) * 100);
+    } else if (body.discountPercent) {
+      discountPercent = Number(body.discountPercent);
     }
 
-    memoryStore.products.unshift(newProduct);
+    // Handle Cloudinary upload for any base64 image strings
+    const processedImages: string[] = [];
+    if (Array.isArray(body.images)) {
+      for (const img of body.images) {
+        if (typeof img === 'string') {
+          if (img.startsWith('data:image/')) {
+            // Upload to Cloudinary
+            const uploadRes = await uploadImageToCloudinary(img, 'palettehubb/products');
+            processedImages.push(uploadRes.secure_url);
+          } else {
+            processedImages.push(img);
+          }
+        }
+      }
+    }
+
+    const cleanSlug = (
+      body.slug ||
+      body.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)+/g, '')
+    ) + `-${Date.now().toString().slice(-4)}`;
+
+    const db = await connectToDatabase();
+    if (!db) {
+      return NextResponse.json(
+        { success: false, error: 'Database service is currently unreachable' },
+        { status: 503 }
+      );
+    }
+
+    const newProduct = await Product.create({
+      name: body.name.trim(),
+      slug: cleanSlug,
+      description: body.description ? body.description.trim() : '',
+      category: body.category.trim(),
+      subcategory: body.subcategory ? body.subcategory.trim() : '',
+      price,
+      originalPrice: originalPrice || 0,
+      discountPercent,
+      images: processedImages,
+      stock: body.stock !== undefined ? Math.max(0, Number(body.stock)) : 10,
+      variants: body.variants || { sizes: ['Standard'], colors: [] },
+      rating: 5.0,
+      reviewsCount: 0,
+      salesCount: 0,
+      isFeatured: Boolean(body.isFeatured),
+      isAvailable: body.isAvailable !== false,
+      supplierId: body.supplierId || '',
+      tags: Array.isArray(body.tags) ? body.tags : [],
+    });
 
     return NextResponse.json({ success: true, product: newProduct }, { status: 201 });
   } catch (error: unknown) {

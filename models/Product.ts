@@ -17,9 +17,10 @@ export interface IProductDoc extends Document {
   };
   rating: number;
   reviewsCount: number;
+  salesCount: number;
   isFeatured: boolean;
   isAvailable: boolean;
-  supplierId?: Schema.Types.ObjectId;
+  supplierId?: string;
   tags: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -28,7 +29,7 @@ export interface IProductDoc extends Document {
 const ProductSchema = new Schema<IProductDoc>(
   {
     name: { type: String, required: true, trim: true },
-    slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    slug: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
     description: { type: String, required: true },
     category: { type: String, required: true, index: true },
     subcategory: { type: String, default: '', index: true },
@@ -36,16 +37,17 @@ const ProductSchema = new Schema<IProductDoc>(
     originalPrice: { type: Number, default: 0 },
     discountPercent: { type: Number, default: 0 },
     images: { type: [String], required: true },
-    stock: { type: Number, required: true, default: 10 },
+    stock: { type: Number, required: true, default: 0, min: 0 },
     variants: {
       sizes: { type: [String], default: [] },
       colors: { type: [String], default: [] },
     },
-    rating: { type: Number, default: 4.8 },
-    reviewsCount: { type: Number, default: 24 },
+    rating: { type: Number, default: 5.0 },
+    reviewsCount: { type: Number, default: 0 },
+    salesCount: { type: Number, default: 0, index: true },
     isFeatured: { type: Boolean, default: false, index: true },
     isAvailable: { type: Boolean, default: true },
-    supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier' },
+    supplierId: { type: String, index: true },
     tags: { type: [String], default: [] },
   },
   { timestamps: true }

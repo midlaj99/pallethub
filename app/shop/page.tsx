@@ -4,7 +4,6 @@ import ShopClient from '@/components/shop/ShopClient';
 import connectToDatabase from '@/lib/db';
 import Product from '@/models/Product';
 import Category from '@/models/Category';
-import memoryStore from '@/lib/memoryStore';
 import { IProduct, ICategory } from '@/types';
 
 export const metadata = {
@@ -20,31 +19,28 @@ async function getShopData(): Promise<{
 }> {
   await connection();
   let categoriesData: ICategory[] = [];
+  let products: IProduct[] = [];
+
   try {
     const db = await connectToDatabase();
     if (db) {
-      const dbCats = await Category.find({ isActive: true }).sort({ order: 1 }).lean();
+      const [dbCats, dbProds] = await Promise.all([
+        Category.find({ isActive: true }).sort({ order: 1 }).lean(),
+        Product.find({ isAvailable: true }).sort({ createdAt: -1 }).lean(),
+      ]);
+
       if (dbCats && dbCats.length > 0) {
         categoriesData = JSON.parse(JSON.stringify(dbCats));
       }
-
-      const prods = await Product.find().lean();
-      if (prods.length > 0) {
-        const plainProds: IProduct[] = JSON.parse(JSON.stringify(prods));
-        const categories = Array.from(new Set(plainProds.map((p) => p.category)));
-        if (categoriesData.length === 0) {
-          categoriesData = memoryStore.categories;
-        }
-        return { products: plainProds, categories, categoriesData };
+      if (dbProds && dbProds.length > 0) {
+        products = JSON.parse(JSON.stringify(dbProds));
       }
     }
   } catch (e) {
     console.error('Error fetching shop data from DB:', e);
   }
 
-  const products = memoryStore.products;
   const categories = Array.from(new Set(products.map((p) => p.category)));
-  categoriesData = memoryStore.categories;
   return { products, categories, categoriesData };
 }
 

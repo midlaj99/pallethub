@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/palette_hubb';
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  console.warn('⚠️ MONGODB_URI is not set in environment variables. Database operations will fail.');
+}
 
 interface MongooseCache {
   conn: typeof mongoose | null;
@@ -26,10 +30,17 @@ export async function connectToDatabase(): Promise<typeof mongoose | null> {
     return cached.conn;
   }
 
+  if (!MONGODB_URI) {
+    return null;
+  }
+
   if (!cached.promise) {
-    const opts = {
+    const opts: mongoose.ConnectOptions = {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 2500, // Quick timeout to fallback if no Mongo running
+      maxPoolSize: 10, // Optimal pool size for Atlas Free Tier
+      minPoolSize: 1,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
     };
 
     cached.promise = mongoose
@@ -38,13 +49,19 @@ export async function connectToDatabase(): Promise<typeof mongoose | null> {
         return mongooseInstance;
       })
       .catch((err) => {
-        console.warn('MongoDB connection failed or not running, operating with resilient storage:', err.message);
+        console.error('MongoDB connection error:', err.message);
         cached.promise = null;
         return null;
       });
   }
 
-  cached.conn = await cached.promise;
+  try {
+    cached.conn = await cached.promise;
+  } catch (e) {
+    cached.promise = null;
+    return null;
+  }
+
   return cached.conn;
 }
 
