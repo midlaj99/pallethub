@@ -64,7 +64,7 @@ export default function CategoryGrid({ initialCategories }: { initialCategories?
                       alt={cat.name}
                       width={240}
                       height={240}
-                      className="object-contain max-h-full transition-transform duration-300 group-hover:scale-105"
+                      className="object-contain w-auto h-auto max-h-full max-w-full transition-transform duration-300 group-hover:scale-105"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center font-bold text-neutral-400 text-xs">
