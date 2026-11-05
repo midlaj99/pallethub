@@ -57,14 +57,15 @@ export default function CategoryGrid({ initialCategories }: { initialCategories?
                 className="group flex flex-col items-center text-center mx-auto w-full max-w-[200px]"
               >
                 {/* Rounded card image container */}
-                <div className="relative w-full aspect-[4/3] sm:aspect-square bg-[#ece8de] rounded-2xl sm:rounded-3xl p-3 sm:p-4 overflow-hidden border border-[#ded7ca]/60 shadow-sm transition-all duration-300 group-hover:shadow-md group-hover:scale-[1.03] flex items-center justify-center">
+                <div className="relative w-full aspect-[4/3] sm:aspect-square bg-[#ece8de] rounded-2xl sm:rounded-3xl p-2 sm:p-2.5 overflow-hidden border border-[#ded7ca]/60 shadow-sm transition-all duration-300 group-hover:shadow-md group-hover:scale-[1.03] flex items-center justify-center">
                   {cat.image ? (
                     <Image
                       src={cat.image}
                       alt={cat.name}
-                      width={240}
-                      height={240}
-                      className="object-contain w-auto h-auto max-h-full max-w-full transition-transform duration-300 group-hover:scale-105"
+                      width={360}
+                      height={360}
+                      sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 16vw"
+                      className="object-contain w-full h-full p-1 transition-transform duration-300 group-hover:scale-108"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center font-bold text-neutral-400 text-xs">
