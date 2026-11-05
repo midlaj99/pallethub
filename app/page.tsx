@@ -3,7 +3,6 @@ import { connection } from 'next/server';
 import HeroSection from '@/components/home/HeroSection';
 import CategoryGrid from '@/components/home/CategoryGrid';
 import FeaturedProducts from '@/components/home/FeaturedProducts';
-import PromoBanner from '@/components/home/PromoBanner';
 import TrustBenefits from '@/components/home/TrustBenefits';
 import connectToDatabase from '@/lib/db';
 import Product from '@/models/Product';
@@ -54,10 +53,7 @@ async function HomeContent() {
       {/* 3. Featured Products */}
       <FeaturedProducts initialProducts={featuredProducts} />
 
-      {/* 4. Promotional Banner */}
-      <PromoBanner />
-
-      {/* 5. Why Choose Us */}
+      {/* 4. Why Choose Us */}
       <TrustBenefits />
     </>
   );
